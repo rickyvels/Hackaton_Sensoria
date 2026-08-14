@@ -102,6 +102,38 @@
 .mobile-platform-navigation { border-color: var(--ops-line); background: #fff; }
 .mobile-platform-navigation button.nav-active { background: var(--ops-blue-soft); color: #3f5ca4; }
 
+/* Libreta de la familia dentro del expediente. Las notas sin revisar se marcan con borde,
+   etiqueta de texto y color a la vez, para no depender solo del tono. */
+.family-notes { margin-top: 20px; padding: 18px; border: 1px solid var(--ops-line); border-radius: 16px; background: #fff; }
+.family-notes-lead { margin: 10px 0 0; color: var(--ops-muted); font-size: 12px; line-height: 1.55; }
+.family-notes-tally { margin: 12px 0 14px; color: var(--ops-muted); font-family: 'DM Mono', ui-monospace, monospace; font-size: 10px; }
+.family-notes-empty { margin: 12px 0 0; color: var(--ops-muted); font-size: 12px; }
+.family-notes-list { display: grid; gap: 11px; margin: 0; padding: 0; list-style: none; }
+.family-notes-list > li { padding: 14px; border: 1px solid var(--ops-line); border-left-width: 4px; border-radius: 13px; background: #fafbfe; }
+.family-notes-list > li.unreviewed { border-left-color: var(--ops-yellow); background: var(--ops-yellow-soft); }
+.family-notes-list > li.reviewed { border-left-color: var(--ops-green); }
+.family-note-head { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-bottom: 8px; }
+.family-note-head strong { font-size: 12px; color: var(--ops-ink); }
+.family-note-head span { color: var(--ops-muted); font-size: 11px; }
+.family-note-head time { color: var(--ops-muted); font-family: 'DM Mono', ui-monospace, monospace; font-size: 10px; }
+.family-note-head em { margin-left: auto; padding: 3px 8px; border-radius: 999px; background: #fff; color: var(--ops-yellow); font-size: 10px; font-style: normal; font-weight: 800; }
+.family-notes-list > li > p { margin: 0; color: var(--ops-ink); font-size: 13px; line-height: 1.55; }
+.family-notes-list > li > small { display: block; margin-top: 7px; color: var(--ops-muted); font-size: 11px; }
+.family-note-reply { display: flex; gap: 7px; align-items: flex-start; margin-top: 11px !important; padding: 10px 11px; border-radius: 10px; background: var(--ops-green-soft); color: var(--ops-green); font-size: 12px; }
+.family-note-reply svg { flex: none; font-size: 16px; }
+.family-note-open { min-height: 44px; margin-top: 11px; padding: 0 14px; border: 1px solid #ccd5e8; border-radius: 11px; background: #fff; color: #43516f; font-size: 12px; font-weight: 800; }
+.family-note-form { display: grid; gap: 8px; margin-top: 11px; }
+.family-note-form label { color: var(--ops-ink); font-size: 11px; font-weight: 800; }
+.family-note-form textarea { width: 100%; padding: 10px 11px; border: 1px solid #ccd5e8; border-radius: 11px; background: #fff; color: var(--ops-ink); font-size: 13px; line-height: 1.5; resize: vertical; }
+.family-note-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.family-note-actions button { min-height: 44px; padding: 0 15px; border: 1px solid #ccd5e8; border-radius: 11px; background: #fff; color: #43516f; font-size: 12px; font-weight: 800; }
+.family-note-actions button.primary { border-color: transparent; background: var(--ops-blue); color: #fff; }
+.family-note-actions button:disabled { opacity: .55; cursor: not-allowed; }
+
+@media (prefers-contrast: more) {
+  .family-notes-list > li, .family-note-open, .family-note-form textarea { border-width: 2px; }
+}
+
 @media (max-width: 1050px) {
   .platform-shell { grid-template-columns: minmax(0, 1fr); }
   .platform-sidebar { display: none; }

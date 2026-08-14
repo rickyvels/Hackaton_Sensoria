@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import CaseEvent, CaseRecord, FamilyProfile, User
+from .models import CaseEvent, CaseRecord, FamilyNote, FamilyProfile, User
 from .security import hash_password
+
+# Observaciones sintéticas para que la libreta no aparezca vacía en la demostración.
+DEMO_NOTES = (
+    (6, "colegio", "avance", "La maestra contó que Mateo participó en la ronda de saludo y esperó su turno sin ayuda. Es la primera vez este mes."),
+    (4, "casa", "retroceso", "Dos noches seguidas le costó dormir y se despertó llorando. Coincidió con el cambio de horario de la terapia."),
+    (2, "terapia", "avance", "En la sesión de lenguaje repitió tres palabras nuevas. La terapeuta pidió que las practiquemos en casa antes de la próxima cita."),
+)
 
 
 async def seed_demo_data(session: AsyncSession) -> None:
@@ -43,6 +52,8 @@ async def seed_demo_data(session: AsyncSession) -> None:
         professional_user_id=professional_user.id,
         patient_name="Mateo Quispe",
         route_status="scheduled",
+        care_stage="intervention",
+        early_detection=True,
         approval_status="not_requested",
         barrier_reported=False,
         family_message="Tu proxima atencion esta programada. Si surge una dificultad, cuentanos para coordinar contigo.",
@@ -59,3 +70,16 @@ async def seed_demo_data(session: AsyncSession) -> None:
             event_metadata={"sensitivity": "synthetic"},
         )
     )
+
+    today = datetime.now(UTC).date()
+    for days_ago, setting, progress, observation in DEMO_NOTES:
+        session.add(
+            FamilyNote(
+                case_id=case.id,
+                author_user_id=family_user.id,
+                setting=setting,
+                observation=observation,
+                progress=progress,
+                occurred_on=today - timedelta(days=days_ago),
+            )
+        )

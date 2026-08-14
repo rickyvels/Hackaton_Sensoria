@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship as sa_relationship
 
 from .database import Base
@@ -62,6 +62,11 @@ class CaseRecord(Base):
     professional_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     patient_name: Mapped[str] = mapped_column(String(120))
     route_status: Mapped[str] = mapped_column(String(64), index=True)
+    # Eje clínico, independiente de `route_status`. Un niño puede estar en intervención y a la
+    # vez tener la ruta detenida por una barrera administrativa: son dos preguntas distintas.
+    care_stage: Mapped[str] = mapped_column(String(32), default="assessment", index=True)
+    # Si la detección llegó a tiempo. `None` mientras no se haya establecido.
+    early_detection: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     approval_status: Mapped[str] = mapped_column(String(64), index=True)
     barrier_reported: Mapped[bool] = mapped_column(Boolean, default=False)
     family_message: Mapped[str] = mapped_column(Text)
@@ -79,6 +84,7 @@ class CaseRecord(Base):
     tasks: Mapped[list[Task]] = sa_relationship(back_populates="case")
     events: Mapped[list[CaseEvent]] = sa_relationship(back_populates="case")
     orchestration_runs: Mapped[list[OrchestrationRun]] = sa_relationship(back_populates="case")
+    family_notes: Mapped[list[FamilyNote]] = sa_relationship(back_populates="case")
 
 
 class BarrierReport(Base):
@@ -141,6 +147,33 @@ class Task(Base):
 
     case: Mapped[CaseRecord] = sa_relationship(back_populates="tasks")
     approval_decision: Mapped[ApprovalDecision] = sa_relationship(back_populates="task")
+
+
+class FamilyNote(Base):
+    """Observación cotidiana escrita por la familia sobre el entorno del niño.
+
+    Es evidencia longitudinal, no una solicitud: registrar una nota nunca cambia la ruta ni
+    crea una tarea. El equipo la lee y puede responderla, y esa respuesta también queda escrita.
+    """
+
+    __tablename__ = "family_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey("cases.id"), index=True)
+    author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    setting: Mapped[str] = mapped_column(String(32), index=True)
+    observation: Mapped[str] = mapped_column(Text)
+    progress: Mapped[str] = mapped_column(String(32), index=True)
+    # La familia escribe cuando puede, no cuando ocurre. Separar ambas fechas evita que la
+    # línea de tiempo clínica quede ordenada por la disponibilidad del cuidador.
+    occurred_on: Mapped[date] = mapped_column(Date, index=True)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    professional_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    case: Mapped[CaseRecord] = sa_relationship(back_populates="family_notes")
+    author: Mapped[User] = sa_relationship(foreign_keys=[author_user_id])
 
 
 class CaseEvent(Base):

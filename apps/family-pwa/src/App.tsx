@@ -1,23 +1,57 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ArrowRight, CalendarBlank, CaretLeft, ChatCircleText, CheckCircle,
-  Clock, ClockCountdown, FileText, Heartbeat, House, Key, MapPin, PaperPlaneTilt,
-  Phone, ShieldCheck, SignOut, UserCircle, UsersThree, WarningCircle,
+  Clock, ClockCountdown, FileText, Heartbeat, House, Key, MapPin, Minus, NotePencil, PaperPlaneTilt,
+  Phone, ShieldCheck, SignOut, TrendDown, TrendUp, UserCircle, UsersThree, WarningCircle,
 } from '@phosphor-icons/react';
 import { motion, useReducedMotion } from 'motion/react';
-import { familyApi, type BarrierReportPayload, type BarrierType, type CurrentCase, type FamilyAssistantReply, type FamilyData, type Session } from './api';
+import { familyApi, type BarrierReportPayload, type BarrierType, type CareStage, type CurrentCase, type FamilyAssistantReply, type FamilyData, type FamilyNote, type FamilyNotePayload, type FamilyNoteSummary, type NoteProgress, type NoteSetting, type Session } from './api';
 
 const DEMO_CREDENTIALS = import.meta.env.DEV || import.meta.env.VITE_DEMO_CREDENTIALS === 'true';
-type FamilyScreen = 'route' | 'agenda' | 'documents' | 'team' | 'assistant' | 'report';
+type FamilyScreen = 'route' | 'agenda' | 'notebook' | 'documents' | 'team' | 'assistant' | 'report';
 
+// El orden es el del recorrido clínico y lo define la API con `care_stage`. Antes esta lista
+// se recorría con una heurística local, así que la etapa mostrada no era un dato del caso.
 const routeStages = [
-  { label: 'Orientación inicial', short: 'Orientación', tone: 'blue' },
-  { label: 'Referencia', short: 'Referencia', tone: 'blue' },
-  { label: 'Evaluación especializada', short: 'Evaluación', tone: 'purple' },
-  { label: 'Plan de atención', short: 'Plan', tone: 'yellow' },
-  { label: 'Seguimiento', short: 'Seguimiento', tone: 'orange' },
-  { label: 'Continuidad', short: 'Continuidad', tone: 'neutral' },
+  { id: 'detection', label: 'Detección', short: 'Detección', tone: 'blue' },
+  { id: 'referral', label: 'Referencia', short: 'Referencia', tone: 'blue' },
+  { id: 'assessment', label: 'Evaluación especializada', short: 'Evaluación', tone: 'purple' },
+  { id: 'intervention', label: 'Intervención', short: 'Intervención', tone: 'yellow' },
+  { id: 'followup', label: 'Seguimiento', short: 'Seguimiento', tone: 'orange' },
+  { id: 'discharge', label: 'Alta y continuidad', short: 'Continuidad', tone: 'neutral' },
 ] as const;
+
+const settingOptions: ReadonlyArray<readonly [NoteSetting, string]> = [
+  ['casa', 'En casa'],
+  ['colegio', 'En el colegio'],
+  ['terapia', 'En terapia'],
+  ['comunidad', 'En la comunidad'],
+  ['otro', 'Otro momento'],
+];
+
+const progressOptions: ReadonlyArray<readonly [NoteProgress, string, string]> = [
+  ['avance', 'Un avance', 'Algo que no hacía antes o que le costaba menos.'],
+  ['sin_cambios', 'Sin cambios', 'Un día parecido a los anteriores.'],
+  ['retroceso', 'Un retroceso', 'Algo que empeoró o que dejó de hacer.'],
+];
+
+function stageIndex(stage: CareStage) {
+  const index = routeStages.findIndex((item) => item.id === stage);
+  return index === -1 ? 0 : index;
+}
+
+function progressMeta(progress: NoteProgress) {
+  if (progress === 'avance') return { label: 'Avance', tone: 'green', Icon: TrendUp } as const;
+  if (progress === 'retroceso') return { label: 'Retroceso', tone: 'orange', Icon: TrendDown } as const;
+  return { label: 'Sin cambios', tone: 'neutral', Icon: Minus } as const;
+}
+
+function formatDay(value: string) {
+  // `occurred_on` viaja como AAAA-MM-DD. Construir la fecha con `new Date(value)` la
+  // interpretaría como UTC y en Lima mostraría el día anterior.
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('es-PE', { day: 'numeric', month: 'long' });
+}
 
 const barrierOptions: ReadonlyArray<readonly [string, string, string, BarrierType]> = [
   ['transport', 'Transporte', 'No puedo llegar al establecimiento.', 'transport'],
@@ -82,6 +116,7 @@ export default function App() {
       <motion.div key={screen} initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .2, ease: [0.23, 1, .32, 1] }}>
         {screen === 'route' && <RouteScreen family={family} caseData={caseData} isApproved={isApproved} isPending={isPending} isReported={isReported} isInReview={isInReview} loading={loading} error={error} onReport={() => setScreen('report')} onAgenda={() => navigate('agenda')} />}
         {screen === 'agenda' && <AgendaScreen caseData={caseData} isApproved={isApproved} isInReview={isInReview} onReport={() => setScreen('report')} />}
+        {screen === 'notebook' && <NotebookScreen token={session.access_token} caseId={caseData.case.id} patientName={family.family_profile.patient_name} />}
         {screen === 'documents' && <DocumentsScreen isInReview={isInReview} />}
         {screen === 'team' && <TeamScreen isApproved={isApproved} isInReview={isInReview} />}
         {screen === 'assistant' && <AssistantScreen token={session.access_token} />}
@@ -90,10 +125,8 @@ export default function App() {
   </main>;
 }
 
-function currentStage(caseData: CurrentCase) { if (caseData.tasks.length) return 4; if (caseData.case.approval_status === 'approved') return 3; return 2; }
-
 function RouteScreen({ family, caseData, isApproved, isPending, isReported, isInReview, loading, error, onReport, onAgenda }: { family: FamilyData; caseData: CurrentCase; isApproved: boolean; isPending: boolean; isReported: boolean; isInReview: boolean; loading: boolean; error: string; onReport: () => void; onAgenda: () => void }) {
-  const stage = currentStage(caseData); const firstName = family.user.full_name.split(' ')[0]; const task = caseData.tasks[0];
+  const stage = stageIndex(caseData.case.care_stage); const firstName = family.user.full_name.split(' ')[0]; const task = caseData.tasks[0];
   return <div className="health-home">
     <section className="family-welcome"><div><p className="family-kicker">HOLA, {firstName.toUpperCase()}</p><h1>{family.family_profile.patient_name} está en {routeStages[stage].label.toLowerCase()}.</h1><p>{caseData.case.family_message}</p></div><span className="demo-chip">Caso demostrativo</span></section>
     <section className="stage-summary tone-purple" aria-labelledby="stage-title"><div className="stage-summary-icon"><Heartbeat weight="fill" /></div><div><span>ETAPA {stage + 1} DE 6</span><h2 id="stage-title">{routeStages[stage].label}</h2><p>{isPending ? 'El equipo revisa la propuesta antes de continuar.' : isReported ? 'Tu aviso llegó al equipo y se está organizando la información.' : isApproved ? 'El siguiente paso fue autorizado y está en coordinación.' : 'El equipo mantiene visible el siguiente paso de la ruta.'}</p></div><strong>{isInReview ? 'En revisión' : isApproved ? 'Autorizada' : 'En curso'}</strong></section>
@@ -107,6 +140,107 @@ function RouteScreen({ family, caseData, isApproved, isPending, isReported, isIn
 function AgendaScreen({ caseData, isApproved, isInReview, onReport }: { caseData: CurrentCase; isApproved: boolean; isInReview: boolean; onReport: () => void }) {
   const task = caseData.tasks[0];
   return <div className="family-panel health-panel"><p className="family-kicker">AGENDA</p><h1>Próximas coordinaciones</h1><p className="family-message">Revisa qué está confirmado y qué sigue pendiente.</p><section className="appointment-feature tone-yellow"><div className="date-block date-pending"><CalendarBlank weight="fill" /><span>POR CONFIRMAR</span></div><div><span>PRÓXIMA COORDINACIÓN</span><h2>{task?.title || 'Horario pendiente del equipo'}</h2><p><Clock /> {task?.authorized_proposal || 'Fecha y hora aún no informadas'}</p><p><MapPin /> Sede por confirmar contigo</p></div><strong className="status-pill">{task || isApproved ? 'En coordinación' : 'Por confirmar'}</strong></section><section className="agenda-timeline"><h2>Estado de la coordinación</h2><TimelineItem tone="green" title="Solicitud recibida" detail="El equipo tiene la información de la ruta." /><TimelineItem tone="purple" title="Revisión profesional" detail={isInReview ? 'En curso. Te avisaremos cuando termine.' : 'Información revisada por el equipo.'} current={isInReview} /><TimelineItem tone="yellow" title="Confirmación contigo" detail={task ? task.authorized_proposal || 'El equipo coordina el horario.' : 'Aún no se ha confirmado un cambio.'} current={!isInReview && !task} /></section><button className="secondary-action" onClick={onReport} disabled={isInReview}><WarningCircle weight="fill" /><span><strong>{isInReview ? 'Tu aviso ya está en revisión' : 'Actualizar mi disponibilidad'}</strong><small>{isInReview ? 'Espera la respuesta antes de enviar otro aviso.' : 'Informa un cambio de horario o una dificultad.'}</small></span><ArrowRight /></button><p className="family-safety"><ShieldCheck weight="fill" /> La aplicación no asigna ni cambia citas por sí sola.</p></div>;
+}
+
+function NotebookScreen({ token, caseId, patientName }: { token: string; caseId: number; patientName: string }) {
+  // `en-CA` da AAAA-MM-DD en hora local. `toISOString()` daría la fecha en UTC y en Lima
+  // permitiría elegir el día siguiente durante la noche.
+  const today = new Date().toLocaleDateString('en-CA');
+  const emptyDraft: FamilyNotePayload = { setting: 'casa', progress: 'avance', observation: '', occurred_on: today };
+  const [notes, setNotes] = useState<FamilyNote[]>([]);
+  const [summary, setSummary] = useState<FamilyNoteSummary | null>(null);
+  const [draft, setDraft] = useState<FamilyNotePayload>(emptyDraft);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const load = useCallback(async () => {
+    try { const data = await familyApi.notebook(token); setNotes(data.notes); setSummary(data.summary); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo abrir la libreta.'); }
+  }, [token]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving(true); setError(''); setNotice('');
+    try {
+      await familyApi.writeNote(token, caseId, { ...draft, observation: draft.observation.trim() });
+      setDraft({ ...emptyDraft });
+      setNotice('Tu nota quedó guardada. El equipo la verá cuando revise el caso.');
+      await load();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo guardar la nota.'); }
+    finally { setSaving(false); }
+  };
+
+  return <div className="family-panel health-panel">
+    <p className="family-kicker">LIBRETA</p>
+    <h1>El día a día de {patientName.split(' ')[0]}</h1>
+    <p className="family-message">Lo que ves en casa, el colegio o la terapia es información que el equipo no tiene. Escríbelo aquí y quedará en su historia.</p>
+
+    {summary && summary.total > 0 && <section className="notebook-summary" aria-label="Resumen de tus notas">
+      <div className="notebook-count"><strong>{summary.total}</strong><span>notas escritas</span></div>
+      <ul className="notebook-tally">
+        <li className="green"><TrendUp weight="fill" /> {summary.advances} avances</li>
+        <li className="neutral"><Minus weight="bold" /> {summary.steady} sin cambios</li>
+        <li className="orange"><TrendDown weight="fill" /> {summary.setbacks} retrocesos</li>
+      </ul>
+      <small>{summary.pending_review === 0 ? 'El equipo revisó todas tus notas.' : `${summary.pending_review} pendiente${summary.pending_review === 1 ? '' : 's'} de revisión`}</small>
+    </section>}
+
+    <form className="notebook-form" onSubmit={submit}>
+      <h2>Escribir una nota</h2>
+
+      <fieldset>
+        <legend>¿Dónde ocurrió?</legend>
+        <div className="notebook-chips">{settingOptions.map(([value, label]) => <button key={value} type="button" className={draft.setting === value ? 'active' : ''} aria-pressed={draft.setting === value} onClick={() => setDraft((current) => ({ ...current, setting: value }))}>{label}</button>)}</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>¿Cómo lo viste?</legend>
+        <div className="notebook-progress">{progressOptions.map(([value, label, hint]) => {
+          const { Icon, tone } = progressMeta(value);
+          return <label key={value} className={`${tone} ${draft.progress === value ? 'active' : ''}`}>
+            <input type="radio" name="progress" value={value} checked={draft.progress === value} onChange={() => setDraft((current) => ({ ...current, progress: value }))} />
+            <Icon weight="fill" /><strong>{label}</strong><small>{hint}</small>
+          </label>;
+        })}</div>
+      </fieldset>
+
+      <label className="notebook-field" htmlFor="note-date">¿Qué día fue?
+        <input id="note-date" type="date" max={today} value={draft.occurred_on} onChange={(event) => setDraft((current) => ({ ...current, occurred_on: event.target.value }))} required />
+      </label>
+
+      <label className="notebook-field" htmlFor="note-observation">¿Qué pasó?
+        <textarea id="note-observation" rows={4} minLength={10} maxLength={2000} required placeholder="Por ejemplo: hoy en el colegio esperó su turno sin ayuda, algo que antes le costaba." value={draft.observation} onChange={(event) => setDraft((current) => ({ ...current, observation: event.target.value }))} />
+        <small>{draft.observation.trim().length < 10 ? 'Escribe al menos una frase completa.' : `${draft.observation.length} de 2000 caracteres`}</small>
+      </label>
+
+      {error && <p className="family-error" role="alert">{error}</p>}
+      {notice && <p className="notebook-notice" role="status">{notice}</p>}
+      <button type="submit" className="report-button" disabled={saving || draft.observation.trim().length < 10}><NotePencil weight="fill" />{saving ? 'Guardando…' : 'Guardar en la libreta'}<ArrowRight weight="bold" /></button>
+    </form>
+
+    <section className="notebook-timeline" aria-label="Tus notas anteriores">
+      <h2>Lo que has registrado</h2>
+      {notes.length === 0 ? <p className="notebook-empty">Todavía no hay notas. La primera puede ser algo pequeño de hoy.</p> : <ol>{notes.map((note) => {
+        const { label, tone, Icon } = progressMeta(note.progress);
+        return <li key={note.id} className={tone}>
+          <div className="notebook-entry-head">
+            <span className="notebook-badge"><Icon weight="fill" /> {label}</span>
+            <time dateTime={note.occurred_on}>{formatDay(note.occurred_on)}</time>
+            <small>{settingOptions.find(([value]) => value === note.setting)?.[1]}</small>
+          </div>
+          <p>{note.observation}</p>
+          {note.professional_comment
+            ? <p className="notebook-reply"><ShieldCheck weight="fill" /> <span><strong>Respuesta del equipo:</strong> {note.professional_comment}</span></p>
+            : <p className="notebook-pending"><ClockCountdown /> Pendiente de revisión del equipo</p>}
+        </li>;
+      })}</ol>}
+    </section>
+
+    <p className="family-safety"><ShieldCheck weight="fill" /> Tus notas se guardan en el caso y las lee el equipo. Escribirlas no cambia una cita ni reemplaza una consulta.</p>
+  </div>;
 }
 
 function DocumentsScreen({ isInReview }: { isInReview: boolean }) { return <div className="family-panel health-panel"><p className="family-kicker">DOCUMENTOS</p><h1>Lo necesario para continuar</h1><p className="family-message">Identifica qué documento ya está disponible y cuál falta.</p><section className="document-list"><DocumentItem tone="green" title="Referencia de primer nivel" status="Recibida" detail="Disponible para el equipo responsable." /><DocumentItem tone="yellow" title="Observaciones de la familia" status={isInReview ? 'En revisión' : 'Pendiente'} detail="Puedes completarlas si el equipo solicita más contexto." /><DocumentItem tone="neutral" title="Informe de evaluación" status="Aún no disponible" detail="Aparecerá después de la evaluación y validación profesional." /></section><section className="info-card tone-blue"><FileText weight="fill" /><div><h2>Antes de tu atención</h2><p>Lleva tu documento de identidad y cualquier informe previo que el establecimiento te haya solicitado.</p></div></section><p className="family-safety"><ShieldCheck weight="fill" /> Los estados mostrados pertenecen al caso sintético del MVP.</p></div>; }
@@ -129,7 +263,7 @@ function AssistantScreen({ token }: { token: string }) {
   return <div className="family-panel assistant-panel health-panel"><p className="family-kicker">AYUDA</p><h1>¿Qué necesitas entender?</h1><p className="family-message">Pregunta por los pasos y estados confirmados de tu ruta. Las preguntas abiertas se responden con el modelo local cuando está disponible.</p><div className="quick-questions"><button onClick={() => void ask('¿Qué sigue en mi ruta?')}>¿Qué sigue?</button><button onClick={() => void ask('¿Cómo reporto una dificultad?')}>Reportar dificultad</button><button onClick={() => void ask('¿Qué documentos necesito?')}>Mis documentos</button></div><div className="chat-log" aria-live="polite">{messages.map((message, index) => <article key={`${message.role}-${index}`} className={`chat-message ${message.role}`}><p>{message.text}</p>{message.meta && <small>{message.meta}</small>}</article>)}{loading && <article className="chat-message assistant"><p>Consultando al modelo local con la información confirmada…</p><small>La respuesta se valida antes de mostrarla</small></article>}</div><form className="chat-form" onSubmit={(event) => { event.preventDefault(); void ask(draft); }}><label htmlFor="family-chat">Escribe una pregunta sobre tu ruta</label><div><input id="family-chat" value={draft} maxLength={800} onChange={(event) => setDraft(event.target.value)} placeholder="Por ejemplo: ¿qué debo hacer ahora?" /><button aria-label="Enviar pregunta" disabled={loading || draft.trim().length < 2}><PaperPlaneTilt weight="fill" /></button></div></form><p className="family-safety"><ShieldCheck weight="fill" /> El modelo local no diagnostica ni indica tratamientos. En una urgencia, contacta al servicio de emergencia o a tu equipo de salud.</p></div>;
 }
 
-function FamilyNav({ current, onChange }: { current: Exclude<FamilyScreen, 'report'>; onChange: (screen: Exclude<FamilyScreen, 'report'>) => void }) { const items = [{ id: 'route', label: 'Inicio', Icon: House }, { id: 'agenda', label: 'Agenda', Icon: CalendarBlank }, { id: 'documents', label: 'Documentos', Icon: FileText }, { id: 'team', label: 'Equipo', Icon: UsersThree }, { id: 'assistant', label: 'Ayuda', Icon: ChatCircleText }] as const; return <nav className="family-nav" aria-label="Secciones principales">{items.map(({ id, label, Icon }) => <button key={id} className={current === id ? 'active' : ''} onClick={() => onChange(id)} aria-current={current === id ? 'page' : undefined}><Icon weight={current === id ? 'fill' : 'regular'} /><span>{label}</span></button>)}</nav>; }
+function FamilyNav({ current, onChange }: { current: Exclude<FamilyScreen, 'report'>; onChange: (screen: Exclude<FamilyScreen, 'report'>) => void }) { const items = [{ id: 'route', label: 'Inicio', Icon: House }, { id: 'agenda', label: 'Agenda', Icon: CalendarBlank }, { id: 'notebook', label: 'Libreta', Icon: NotePencil }, { id: 'documents', label: 'Documentos', Icon: FileText }, { id: 'team', label: 'Equipo', Icon: UsersThree }, { id: 'assistant', label: 'Ayuda', Icon: ChatCircleText }] as const; return <nav className="family-nav" aria-label="Secciones principales">{items.map(({ id, label, Icon }) => <button key={id} className={current === id ? 'active' : ''} onClick={() => onChange(id)} aria-current={current === id ? 'page' : undefined}><Icon weight={current === id ? 'fill' : 'regular'} /><span>{label}</span></button>)}</nav>; }
 
 function FamilyLogin({ onSession }: { onSession: (session: Session) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login'); const [dni, setDni] = useState(DEMO_CREDENTIALS ? '12345678' : ''); const [password, setPassword] = useState(DEMO_CREDENTIALS ? 'familia123' : ''); const [registration, setRegistration] = useState({ dni: '', companion_name: '', patient_name: '', relationship: '', phone: '', district: '', consent_confirmed: false }); const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [loading, setLoading] = useState(false);

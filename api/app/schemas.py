@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -8,6 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Role = Literal["family", "professional"]
 RouteStatus = Literal["scheduled", "barrier_reported", "awaiting_authorization", "coordination_active"]
+# Eje clínico del recorrido, distinto del estado operativo de la ruta.
+CareStage = Literal["detection", "referral", "assessment", "intervention", "followup", "discharge"]
+NoteSetting = Literal["casa", "colegio", "terapia", "comunidad", "otro"]
+NoteProgress = Literal["avance", "sin_cambios", "retroceso"]
 ApprovalStatus = Literal["not_requested", "pending", "approved", "rejected"]
 BarrierType = Literal["availability", "transport", "administrative", "other"]
 BarrierReviewStatus = Literal["pending_validation", "pending_review", "approved", "rejected", "clarification_requested"]
@@ -76,6 +80,8 @@ class CaseSummary(BaseModel):
     case_code: str
     patient_name: str
     route_status: RouteStatus
+    care_stage: CareStage
+    early_detection: bool | None = None
     approval_status: ApprovalStatus
     barrier_reported: bool
     family_message: str
@@ -109,6 +115,60 @@ class SynthesisValidationCreate(BaseModel):
     decision: Literal["approved", "rejected", "clarification_requested"]
     edited_summary: str | None = Field(default=None, max_length=2000)
     professional_comment: str = Field(min_length=3, max_length=2000)
+
+
+class FamilyNoteCreate(BaseModel):
+    setting: NoteSetting
+    observation: str = Field(min_length=10, max_length=2000)
+    progress: NoteProgress
+    occurred_on: date
+
+    @field_validator("occurred_on")
+    @classmethod
+    def cannot_be_in_the_future(cls, value: date) -> date:
+        # La libreta documenta lo que ya pasó. Una fecha futura sería una expectativa, y
+        # mezclarla con las observaciones distorsionaría la línea de tiempo que lee el equipo.
+        if value > datetime.now().date():
+            raise ValueError("occurred_on cannot be in the future")
+        return value
+
+
+class FamilyNoteReviewCreate(BaseModel):
+    professional_comment: str = Field(min_length=3, max_length=2000)
+
+
+class FamilyNoteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    setting: NoteSetting
+    observation: str
+    progress: NoteProgress
+    occurred_on: date
+    author_name: str
+    professional_comment: str | None = None
+    reviewed_at: datetime | None = None
+    created_at: datetime
+
+
+class FamilyNoteSummary(BaseModel):
+    """Recuento simple para que la familia vea que su registro se acumula y se lee."""
+
+    total: int
+    advances: int
+    steady: int
+    setbacks: int
+    pending_review: int
+
+
+class FamilyNotesResponse(BaseModel):
+    notes: list[FamilyNoteRead]
+    summary: FamilyNoteSummary
+
+
+class FamilyNoteResponse(BaseModel):
+    note: FamilyNoteRead
+    summary: FamilyNoteSummary
 
 
 class PendingApprovalRead(BaseModel):
@@ -205,8 +265,10 @@ class ProfessionalCaseListItem(BaseModel):
     family_name: str
     patient_name: str
     route_status: RouteStatus
+    care_stage: CareStage
     approval_status: ApprovalStatus
     last_barrier_title: str | None
+    unreviewed_notes: int
     updated_at: datetime
 
 
@@ -220,6 +282,8 @@ class ProfessionalCaseDetailResponse(BaseModel):
     latest_barrier_report: BarrierReportRead | None
     approval_history: list[ApprovalDecisionRead]
     tasks: list[TaskRead]
+    family_notes: list[FamilyNoteRead]
+    family_notes_summary: FamilyNoteSummary
 
 
 class ApprovalDecisionResponse(BaseModel):

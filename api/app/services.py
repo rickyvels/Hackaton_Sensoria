@@ -5,11 +5,29 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc, select, update
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import ApprovalDecision, BarrierReport, CaseEvent, CaseRecord, FamilyProfile, OrchestrationRun, Task, User
-from .schemas import ApprovalDecisionCreate, BarrierReportCreate, SynthesisValidationCreate
+from .models import (
+    ApprovalDecision,
+    BarrierReport,
+    CaseEvent,
+    CaseRecord,
+    FamilyNote,
+    FamilyProfile,
+    OrchestrationRun,
+    Task,
+    User,
+)
+from .schemas import (
+    ApprovalDecisionCreate,
+    BarrierReportCreate,
+    FamilyNoteCreate,
+    FamilyNoteRead,
+    FamilyNoteReviewCreate,
+    FamilyNoteSummary,
+    SynthesisValidationCreate,
+)
 
 LIMA_TZ = ZoneInfo("America/Lima")
 
@@ -137,6 +155,165 @@ async def fetch_events(session: AsyncSession, *, case_id: int) -> list[CaseEvent
         select(CaseEvent).where(CaseEvent.case_id == case_id).order_by(CaseEvent.created_at.asc(), CaseEvent.id.asc())
     )
     return list(result.scalars().all())
+
+
+async def fetch_family_notes(session: AsyncSession, *, case_id: int, limit: int = 60) -> list[FamilyNoteRead]:
+    """Devuelve la libreta ordenada por cuándo ocurrió, no por cuándo se escribió."""
+    rows = (
+        await session.execute(
+            select(FamilyNote, User.full_name)
+            .join(User, FamilyNote.author_user_id == User.id)
+            .where(FamilyNote.case_id == case_id)
+            .order_by(desc(FamilyNote.occurred_on), desc(FamilyNote.id))
+            .limit(limit)
+        )
+    ).all()
+    return [
+        FamilyNoteRead(
+            id=note.id,
+            setting=note.setting,
+            observation=note.observation,
+            progress=note.progress,
+            occurred_on=note.occurred_on,
+            author_name=author_name,
+            professional_comment=note.professional_comment,
+            reviewed_at=note.reviewed_at,
+            created_at=note.created_at,
+        )
+        for note, author_name in rows
+    ]
+
+
+async def summarize_family_notes(session: AsyncSession, *, case_id: int) -> FamilyNoteSummary:
+    rows = (
+        await session.execute(
+            select(FamilyNote.progress, func.count())
+            .where(FamilyNote.case_id == case_id)
+            .group_by(FamilyNote.progress)
+        )
+    ).all()
+    counts = {progress: total for progress, total in rows}
+    pending_review = await session.scalar(
+        select(func.count())
+        .select_from(FamilyNote)
+        .where(FamilyNote.case_id == case_id, FamilyNote.reviewed_at.is_(None))
+    )
+    return FamilyNoteSummary(
+        total=sum(counts.values()),
+        advances=counts.get("avance", 0),
+        steady=counts.get("sin_cambios", 0),
+        setbacks=counts.get("retroceso", 0),
+        pending_review=pending_review or 0,
+    )
+
+
+async def create_family_note(
+    session: AsyncSession,
+    *,
+    case_id: int,
+    payload: FamilyNoteCreate,
+    author: User,
+) -> FamilyNoteRead:
+    """Registra una observación de la familia.
+
+    Deliberadamente no toca `route_status`, `care_stage` ni crea tareas: la libreta es
+    testimonio, y cualquier cambio de atención sigue exigiendo una decisión profesional.
+    """
+    try:
+        case = await fetch_current_case_for_family(session, user_id=author.id)
+        if case.id != case_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+
+        note = FamilyNote(
+            case_id=case.id,
+            author_user_id=author.id,
+            setting=payload.setting,
+            observation=payload.observation,
+            progress=payload.progress,
+            occurred_on=payload.occurred_on,
+        )
+        session.add(note)
+        await session.flush()
+        await emit_event(
+            session,
+            case_id=case.id,
+            kind="FamilyNote",
+            actor=author.full_name,
+            message=f"Nota de la familia sobre {payload.setting}.",
+            metadata={
+                "channel": "family-pwa",
+                "family_note_id": note.id,
+                "setting": payload.setting,
+                "progress": payload.progress,
+                "occurred_on": payload.occurred_on.isoformat(),
+                "changes_route": False,
+            },
+        )
+        await session.commit()
+        await session.refresh(note)
+    except Exception:
+        await session.rollback()
+        raise
+
+    return FamilyNoteRead(
+        id=note.id,
+        setting=note.setting,
+        observation=note.observation,
+        progress=note.progress,
+        occurred_on=note.occurred_on,
+        author_name=author.full_name,
+        professional_comment=note.professional_comment,
+        reviewed_at=note.reviewed_at,
+        created_at=note.created_at,
+    )
+
+
+async def review_family_note(
+    session: AsyncSession,
+    *,
+    case_id: int,
+    note_id: int,
+    payload: FamilyNoteReviewCreate,
+    professional: User,
+) -> FamilyNoteRead:
+    """Deja constancia de que el equipo leyó una nota y qué respondió."""
+    case = await session.scalar(
+        select(CaseRecord).where(CaseRecord.id == case_id, CaseRecord.professional_user_id == professional.id)
+    )
+    if case is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+    note = await session.scalar(
+        select(FamilyNote).where(FamilyNote.id == note_id, FamilyNote.case_id == case_id)
+    )
+    if note is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+
+    note.reviewed_by_user_id = professional.id
+    note.reviewed_at = datetime.now(LIMA_TZ)
+    note.professional_comment = payload.professional_comment
+    await emit_event(
+        session,
+        case_id=case_id,
+        kind="FamilyNoteReviewed",
+        actor=professional.full_name,
+        message="El equipo revisó una nota de la familia.",
+        metadata={"family_note_id": note.id, "changes_route": False},
+    )
+    await session.commit()
+    await session.refresh(note)
+
+    author_name = await session.scalar(select(User.full_name).where(User.id == note.author_user_id))
+    return FamilyNoteRead(
+        id=note.id,
+        setting=note.setting,
+        observation=note.observation,
+        progress=note.progress,
+        occurred_on=note.occurred_on,
+        author_name=author_name or "Familia",
+        professional_comment=note.professional_comment,
+        reviewed_at=note.reviewed_at,
+        created_at=note.created_at,
+    )
 
 
 async def create_barrier_report(

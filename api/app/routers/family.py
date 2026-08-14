@@ -18,16 +18,22 @@ from ..schemas import (
     FamilyAssistantRequest,
     FamilyAssistantResponse,
     FamilyMeResponse,
+    FamilyNoteCreate,
+    FamilyNoteResponse,
+    FamilyNotesResponse,
     FamilyProfileRead,
     PendingApprovalRead,
     UserRead,
 )
 from ..services import (
     create_barrier_report,
+    create_family_note,
     fetch_current_case_for_family,
+    fetch_family_notes,
     fetch_family_profile_for_user,
     fetch_latest_barrier_report,
     fetch_tasks,
+    summarize_family_notes,
 )
 
 router = APIRouter(prefix="/family", tags=["family"])
@@ -148,6 +154,32 @@ async def family_assistant(
         provider=provider,
         model=model,
         disclaimer="Ruta Viva orienta sobre la coordinación registrada; no realiza diagnósticos ni reemplaza al equipo de salud.",
+    )
+
+
+@router.get("/cases/current/notes", response_model=FamilyNotesResponse)
+async def list_family_notes(
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_role("family")),
+) -> FamilyNotesResponse:
+    current_case = await fetch_current_case_for_family(session, user_id=user.id)
+    return FamilyNotesResponse(
+        notes=await fetch_family_notes(session, case_id=current_case.id),
+        summary=await summarize_family_notes(session, case_id=current_case.id),
+    )
+
+
+@router.post("/cases/{case_id}/notes", response_model=FamilyNoteResponse, status_code=201)
+async def write_family_note(
+    case_id: int,
+    payload: FamilyNoteCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_role("family")),
+) -> FamilyNoteResponse:
+    note = await create_family_note(session, case_id=case_id, payload=payload, author=user)
+    return FamilyNoteResponse(
+        note=note,
+        summary=await summarize_family_notes(session, case_id=case_id),
     )
 
 

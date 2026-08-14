@@ -33,6 +33,16 @@ async def ensure_orchestration_schema(connection: AsyncConnection) -> None:
     if "proposal_hash" not in decision_columns:
         await connection.execute(text("ALTER TABLE approval_decisions ADD COLUMN proposal_hash VARCHAR(64)"))
 
+    # `family_notes` es tabla nueva, así que la crea `create_all`. Aquí solo van las columnas
+    # que se añaden a tablas que ya existen en una base de demostración anterior.
+    case_columns = {row[1] for row in (await connection.execute(text("PRAGMA table_info('cases')"))).all()}
+    if "care_stage" not in case_columns:
+        await connection.execute(
+            text("ALTER TABLE cases ADD COLUMN care_stage VARCHAR(32) NOT NULL DEFAULT 'assessment'")
+        )
+    if "early_detection" not in case_columns:
+        await connection.execute(text("ALTER TABLE cases ADD COLUMN early_detection BOOLEAN"))
+
     report_columns = {row[1] for row in (await connection.execute(text("PRAGMA table_info('barrier_reports')"))).all()}
     additions = {
         "ai_synthesis": "JSON",

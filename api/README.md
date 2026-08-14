@@ -48,8 +48,12 @@ Base: `/api/v1`
 - `GET /family/cases/current`
 - `POST /family/cases/current/assistant`
 - `POST /family/cases/{case_id}/barrier-reports`
+- `GET /family/cases/current/notes`
+- `POST /family/cases/{case_id}/notes`
 - `GET /professional/cases`
 - `GET /professional/cases/{case_id}`
+- `GET /professional/cases/{case_id}/notes`
+- `POST /professional/cases/{case_id}/notes/{note_id}/review`
 - `POST /professional/cases/{case_id}/synthesis-validation`
 - `POST /professional/cases/{case_id}/approval-decisions`
 - `POST /orchestration/cases/{case_id}/runs`
@@ -61,6 +65,22 @@ Base: `/api/v1`
 - `GET /cases/{case_id}/feed`
 - `GET /tasks/{task_id}`
 - `GET /health`
+
+## Libreta de la familia
+
+`family_notes` guarda observaciones del entorno diario del niño (casa, colegio, terapia) escritas
+por el cuidador. Es evidencia longitudinal, no una solicitud: crear una nota **no** cambia
+`route_status`, **no** cambia `care_stage` y **no** crea tareas. El profesional puede responderla y
+esa respuesta vuelve a la familia dentro de su propia libreta.
+
+Las notas no aparecen en `GET /cases/{case_id}/feed` de la familia: se leen en su endpoint propio,
+y el feed conserva su lista blanca de tipos y de metadatos.
+
+## Etapa clínica
+
+`cases.care_stage` recorre `detection → referral → assessment → intervention → followup →
+discharge`. Es un eje distinto de `route_status`, que describe el estado operativo de la
+coordinación. Un caso puede estar en `intervention` y a la vez en `barrier_reported`.
 
 ## Gate humano
 

@@ -23,6 +23,7 @@ export const platformApi = {
   run: (token: string, runId: string) => request<OrchestrationRun>(`/orchestration/runs/${runId}`, {}, token),
   controlRun: (token: string, runId: string, action: 'pause' | 'resume') => request<OrchestrationRun>(`/orchestration/runs/${runId}/control`, { method: 'POST', body: JSON.stringify({ action }) }, token),
   graph: (token: string, caseId: number) => request<ProvenanceGraph>(`/orchestration/cases/${caseId}/graph`, {}, token),
+  reviewNote: (token: string, caseId: number, noteId: number, professional_comment: string) => request<FamilyNote>(`/professional/cases/${caseId}/notes/${noteId}/review`, { method: 'POST', body: JSON.stringify({ professional_comment }) }, token),
   streamRun: async (token: string, runId: string, afterId: number, signal: AbortSignal, onEvent: (event: FeedEvent) => void) => {
     const response = await fetch(`${API_URL}/orchestration/runs/${runId}/events?after_id=${afterId}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -46,8 +47,13 @@ export const platformApi = {
   },
 };
 
-export type CaseRow = { id: number; case_code: string; family_name: string; patient_name: string; route_status: string; approval_status: string; last_barrier_title?: string; updated_at: string };
-export type CaseDetail = { case: CaseRow & { family_message: string }; family_profile: { relationship: string; phone: string; district: string }; latest_barrier_report?: { status: string; title: string; description: string; availability_note?: string; ai_synthesis?: { summary?: string; items?: Array<{ category: string; text: string }>; missing_information?: string[]; possible_contradictions?: string[]; administrative_action?: string; version?: number }; validation_status?: string; validated_by_professional?: boolean; reviewer_comment?: string }; approval_history: Array<{ decision: string; professional_note: string; created_at: string }>; tasks: Array<{ id: number; title: string; owner: string; status: string; authorized_proposal?: string }> };
+export type CareStage = 'detection' | 'referral' | 'assessment' | 'intervention' | 'followup' | 'discharge';
+export type NoteSetting = 'casa' | 'colegio' | 'terapia' | 'comunidad' | 'otro';
+export type NoteProgress = 'avance' | 'sin_cambios' | 'retroceso';
+export type FamilyNote = { id: number; setting: NoteSetting; observation: string; progress: NoteProgress; occurred_on: string; author_name: string; professional_comment?: string | null; reviewed_at?: string | null; created_at: string };
+export type FamilyNoteSummary = { total: number; advances: number; steady: number; setbacks: number; pending_review: number };
+export type CaseRow = { id: number; case_code: string; family_name: string; patient_name: string; route_status: string; care_stage: CareStage; approval_status: string; last_barrier_title?: string; unreviewed_notes: number; updated_at: string };
+export type CaseDetail = { case: CaseRow & { family_message: string }; family_profile: { relationship: string; phone: string; district: string }; latest_barrier_report?: { status: string; title: string; description: string; availability_note?: string; ai_synthesis?: { summary?: string; items?: Array<{ category: string; text: string }>; missing_information?: string[]; possible_contradictions?: string[]; administrative_action?: string; version?: number }; validation_status?: string; validated_by_professional?: boolean; reviewer_comment?: string }; approval_history: Array<{ decision: string; professional_note: string; created_at: string }>; tasks: Array<{ id: number; title: string; owner: string; status: string; authorized_proposal?: string }>; family_notes: FamilyNote[]; family_notes_summary: FamilyNoteSummary };
 export type FeedEvent = { id: number; kind: string; actor: string; message: string; metadata?: Record<string, unknown>; created_at: string };
 export type Feed = { events: FeedEvent[]; tasks: CaseDetail['tasks'] };
 export type DecisionResult = { decision: { decision: string }; case: CaseRow; task?: CaseDetail['tasks'][number] | null };

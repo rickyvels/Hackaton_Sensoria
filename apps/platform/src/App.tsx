@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BellSimple, Brain, CaretRight, CheckCircle, CircleNotch, ClipboardText, Compass,
-  FlowArrow, Graph, Heartbeat, LockKey, Pause, Play, ShieldCheck, SignIn, Sparkle,
+  FlowArrow, Graph, Heartbeat, LockKey, NotePencil, Pause, Play, ShieldCheck, SignIn, Sparkle,
   UsersThree, WarningCircle, XCircle,
 } from '@phosphor-icons/react';
 import { useReducedMotion } from 'motion/react';
 import {
-  platformApi, type AgentArtifact, type CaseDetail, type CaseRow, type Feed,
+  platformApi, type AgentArtifact, type CaseDetail, type CaseRow, type FamilyNote,
+  type FamilyNoteSummary, type Feed, type NoteProgress, type NoteSetting,
   type OrchestrationRun, type ProvenanceGraph, type Session,
 } from './api';
 
@@ -196,6 +197,21 @@ export default function App() {
     } finally { setLoading(false); }
   };
 
+  const reviewNote = async (noteId: number, comment: string) => {
+    if (!session || !selected) return;
+    const caseId = selected.case.id;
+    setError('');
+    try {
+      await platformApi.reviewNote(session.access_token, caseId, noteId, comment);
+      if (selectedCaseId.current !== caseId) return;
+      await loadCase(session.access_token, caseId, true);
+      const refreshed = await platformApi.cases(session.access_token);
+      if (selectedCaseId.current === caseId) setCases(refreshed.items);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'No se pudo registrar la respuesta.');
+    }
+  };
+
   if (!session) return <ProfessionalLogin onSession={setSession} />;
   const pendingCount = cases.filter((item) => item.approval_status === 'pending').length;
   const proposal = selected ? proposalDrafts[selected.case.id] ?? run?.proposal ?? DEFAULT_PROPOSAL : DEFAULT_PROPOSAL;
@@ -247,6 +263,7 @@ export default function App() {
         onPlay={() => void playCase()} onPause={() => void control('pause')} onResume={() => void control('resume')}
         onDecide={(decision) => void decide(decision)}
         onValidateSynthesis={(decision, summary, comment) => void validateSynthesis(decision, summary, comment)}
+        onReviewNote={(noteId, comment) => void reviewNote(noteId, comment)}
         onProposalChange={(value) => selected && setProposalDrafts((drafts) => ({ ...drafts, [selected.case.id]: value }))} monitorFocus={monitorFocus}
       />
     </section>
@@ -257,12 +274,13 @@ function mergeArtifact(current: AgentArtifact[], incoming: AgentArtifact) {
   return [...current.filter((item) => item.agent_id !== incoming.agent_id), incoming];
 }
 
-function PlatformContent({ section, cases, selected, feed, run, graph, loading, streaming, pendingCount, proposal, gateReady, reduceMotion, onChooseCase, onOpenCases, onOpenMonitor, onOpenTrace, onPlay, onPause, onResume, onDecide, onValidateSynthesis, onProposalChange, monitorFocus }: {
+function PlatformContent({ section, cases, selected, feed, run, graph, loading, streaming, pendingCount, proposal, gateReady, reduceMotion, onChooseCase, onOpenCases, onOpenMonitor, onOpenTrace, onPlay, onPause, onResume, onDecide, onValidateSynthesis, onReviewNote, onProposalChange, monitorFocus }: {
   section: PlatformSection; cases: CaseRow[]; selected: CaseDetail | null; feed: Feed | null; run: OrchestrationRun | null; graph: ProvenanceGraph | null;
   loading: boolean; streaming: boolean; pendingCount: number; proposal: string; gateReady: boolean; reduceMotion: boolean;
   onChooseCase: (id: number) => void; onOpenCases: () => void; onOpenMonitor: () => void; onOpenTrace: () => void;
   onPlay: () => void; onPause: () => void; onResume: () => void; onDecide: (decision: 'approved' | 'rejected') => void; onProposalChange: (value: string) => void;
   onValidateSynthesis: (decision: 'approved' | 'rejected' | 'clarification_requested', summary: string, comment: string) => void;
+  onReviewNote: (noteId: number, comment: string) => void;
   monitorFocus: MonitorFocus;
 }) {
   if (loading && !selected) return <div className="platform-loader"><CircleNotch className="spin" /> Cargando información…</div>;
@@ -274,7 +292,7 @@ function PlatformContent({ section, cases, selected, feed, run, graph, loading, 
     <CareRoute selected={selected} compact onOpenCase={onOpenCases} />
     <AgentOverview run={run} onOpenMonitor={onOpenMonitor} />
   </section>;
-  if (section === 'cases') return <section className="cases-page"><CaseList cases={cases} selectedId={selected.case.id} onChoose={onChooseCase} /><CaseDecisionWorkspace selected={selected} run={run} proposal={proposal} gateReady={gateReady} loading={loading} onProposalChange={onProposalChange} onDecide={onDecide} onValidateSynthesis={onValidateSynthesis} onOpenMonitor={onOpenMonitor} onOpenTrace={onOpenTrace} /></section>;
+  if (section === 'cases') return <section className="cases-page"><CaseList cases={cases} selectedId={selected.case.id} onChoose={onChooseCase} /><CaseDecisionWorkspace selected={selected} run={run} proposal={proposal} gateReady={gateReady} loading={loading} onProposalChange={onProposalChange} onDecide={onDecide} onValidateSynthesis={onValidateSynthesis} onReviewNote={onReviewNote} onOpenMonitor={onOpenMonitor} onOpenTrace={onOpenTrace} /></section>;
   if (section === 'monitor') return <section className="section-stack"><CaseFocus selected={selected} run={run} /><AgentMonitor focus={monitorFocus} run={run} feed={feed} onPlay={onPlay} onPause={onPause} onResume={onResume} onOpenTrace={onOpenTrace} streaming={streaming} reduceMotion={reduceMotion} hasBarrier={hasBarrier} /></section>;
   if (section === 'trace') return <section className="trace-page"><CaseFocus selected={selected} run={run} />{graph ? <Suspense fallback={<div className="platform-loader">Preparando historial…</div>}><ProvenanceView graph={graph} reduceMotion={reduceMotion} /></Suspense> : <div className="platform-loader">Aún no hay trazabilidad disponible.</div>}</section>;
   return null;
@@ -312,19 +330,65 @@ function CareRoute({ selected, compact = false, onOpenCase }: { selected: CaseDe
 }
 
 function CaseList({ cases, selectedId, onChoose }: { cases: CaseRow[]; selectedId: number; onChoose: (id: number) => void }) {
-  return <section className="case-list" aria-label="Lista de casos"><div className="section-title"><div><p>CASOS DISPONIBLES</p><h2>Rutas</h2></div><span>{cases.length}</span></div>{cases.map((item) => <button className={`case-row ${selectedId === item.id ? 'case-row-active' : ''}`} onClick={() => onChoose(item.id)} key={item.id}><span className="case-initial">{item.patient_name[0]}</span><span><strong>{item.patient_name}</strong><small>{item.case_code}</small></span><em>{statusLabel(item.approval_status)}</em><CaretRight /></button>)}</section>;
+  return <section className="case-list" aria-label="Lista de casos"><div className="section-title"><div><p>CASOS DISPONIBLES</p><h2>Rutas</h2></div><span>{cases.length}</span></div>{cases.map((item) => <button className={`case-row ${selectedId === item.id ? 'case-row-active' : ''}`} onClick={() => onChoose(item.id)} key={item.id}><span className="case-initial">{item.patient_name[0]}</span><span><strong>{item.patient_name}</strong><small>{item.case_code}{item.unreviewed_notes > 0 ? ` · ${item.unreviewed_notes} nota${item.unreviewed_notes === 1 ? '' : 's'} sin leer` : ''}</small></span><em>{statusLabel(item.approval_status)}</em><CaretRight /></button>)}</section>;
 }
 
 function CaseFocus({ selected, run }: { selected: CaseDetail; run: OrchestrationRun | null }) {
   return <section className="case-focus"><div><p>CASO {selected.case.case_code}</p><h2>{selected.case.patient_name}</h2><span>{selected.family_profile.relationship} · {selected.family_profile.district} · Identidad protegida</span></div><span className={`status-badge status-${selected.case.approval_status}`}>{statusLabel(run?.status || selected.case.approval_status)}</span></section>;
 }
 
-function CaseDecisionWorkspace({ selected, run, proposal, gateReady, loading, onProposalChange, onDecide, onValidateSynthesis, onOpenMonitor, onOpenTrace }: { selected: CaseDetail; run: OrchestrationRun | null; proposal: string; gateReady: boolean; loading: boolean; onProposalChange: (value: string) => void; onDecide: (decision: 'approved' | 'rejected') => void; onValidateSynthesis: (decision: 'approved' | 'rejected' | 'clarification_requested', summary: string, comment: string) => void; onOpenMonitor: () => void; onOpenTrace: () => void }) {
+function CaseDecisionWorkspace({ selected, run, proposal, gateReady, loading, onProposalChange, onDecide, onValidateSynthesis, onReviewNote, onOpenMonitor, onOpenTrace }: { selected: CaseDetail; run: OrchestrationRun | null; proposal: string; gateReady: boolean; loading: boolean; onProposalChange: (value: string) => void; onDecide: (decision: 'approved' | 'rejected') => void; onValidateSynthesis: (decision: 'approved' | 'rejected' | 'clarification_requested', summary: string, comment: string) => void; onReviewNote: (noteId: number, comment: string) => void; onOpenMonitor: () => void; onOpenTrace: () => void }) {
   const nextAction = selected.case.approval_status === 'pending'
     ? <section className={`decision-panel ${gateReady ? 'decision-ready' : ''}`}><div className="gate-symbol"><LockKey weight="fill" /></div><div className="decision-copy"><p>DECISIÓN PROFESIONAL</p><h3>{gateReady ? 'El siguiente paso está listo para tu revisión.' : 'La información del caso está siendo organizada.'}</h3><span>{gateReady ? 'Puedes ajustar la propuesta, aprobarla o devolverla para una nueva revisión.' : 'No se creará ninguna tarea hasta que exista una decisión registrada.'}</span></div><label><span>Acción propuesta</span><textarea value={proposal} onChange={(event) => onProposalChange(event.target.value)} disabled={!gateReady} /></label><div className="decision-actions"><button className="reject" disabled={loading || !gateReady} onClick={() => onDecide('rejected')}><XCircle weight="fill" />Devolver para revisión</button><button className="approve" disabled={loading || !gateReady} onClick={() => onDecide('approved')}><CheckCircle weight="fill" />Aprobar y crear tarea</button></div></section>
     : <section className="task-card"><CheckCircle weight="fill" /><div><p>{selected.tasks.length ? 'SIGUIENTE PASO CONFIRMADO' : 'SIGUIENTE PASO'}</p><h3>{selected.tasks[0]?.title || (run?.status === 'completed' ? 'La revisión terminó sin crear una tarea.' : 'Aún no hay una acción pendiente.')}</h3><span>{selected.tasks[0]?.authorized_proposal || selected.case.family_message}</span></div></section>;
   const pendingSynthesis = selected.latest_barrier_report?.validation_status === 'pending_validation';
-  return <section className="case-workbench" id="workbench"><CaseFocus selected={selected} run={run} />{pendingSynthesis ? <SynthesisReview report={selected.latest_barrier_report!} loading={loading} onValidate={onValidateSynthesis} /> : <><>{nextAction}</><article className="barrier-card"><div className="card-heading"><span>INFORMACIÓN ORIGINAL</span><WarningCircle weight="fill" /></div><h3>{selected.latest_barrier_report?.title || 'No hay una dificultad pendiente'}</h3><p>{selected.latest_barrier_report?.description || 'La ruta se encuentra al día.'}</p>{selected.latest_barrier_report?.availability_note ? <small>Disponibilidad: {selected.latest_barrier_report.availability_note}</small> : null}</article><CareRoute selected={selected} compact /><div className="case-action-row"><button onClick={onOpenMonitor}><Sparkle weight="fill" /> Ver coordinación</button><button onClick={onOpenTrace}><Graph weight="fill" /> Historial de la ruta</button></div></>}</section>;
+  return <section className="case-workbench" id="workbench"><CaseFocus selected={selected} run={run} />{pendingSynthesis ? <SynthesisReview report={selected.latest_barrier_report!} loading={loading} onValidate={onValidateSynthesis} /> : <><>{nextAction}</><article className="barrier-card"><div className="card-heading"><span>INFORMACIÓN ORIGINAL</span><WarningCircle weight="fill" /></div><h3>{selected.latest_barrier_report?.title || 'No hay una dificultad pendiente'}</h3><p>{selected.latest_barrier_report?.description || 'La ruta se encuentra al día.'}</p>{selected.latest_barrier_report?.availability_note ? <small>Disponibilidad: {selected.latest_barrier_report.availability_note}</small> : null}</article><CareRoute selected={selected} compact /><FamilyNotesReview notes={selected.family_notes} summary={selected.family_notes_summary} onReview={onReviewNote} /><div className="case-action-row"><button onClick={onOpenMonitor}><Sparkle weight="fill" /> Ver coordinación</button><button onClick={onOpenTrace}><Graph weight="fill" /> Historial de la ruta</button></div></>}</section>;
+}
+
+const NOTE_SETTING_LABELS: Record<NoteSetting, string> = { casa: 'En casa', colegio: 'En el colegio', terapia: 'En terapia', comunidad: 'En la comunidad', otro: 'Otro momento' };
+const NOTE_PROGRESS_LABELS: Record<NoteProgress, string> = { avance: 'Avance', sin_cambios: 'Sin cambios', retroceso: 'Retroceso' };
+
+function FamilyNotesReview({ notes, summary, onReview }: { notes: FamilyNote[]; summary: FamilyNoteSummary; onReview: (noteId: number, comment: string) => void }) {
+  const [openNote, setOpenNote] = useState<number | null>(null);
+  const [draft, setDraft] = useState('');
+
+  const send = (noteId: number) => {
+    if (draft.trim().length < 3) return;
+    onReview(noteId, draft.trim());
+    setOpenNote(null); setDraft('');
+  };
+
+  return <article className="family-notes">
+    <div className="card-heading"><span>LIBRETA DE LA FAMILIA</span><NotePencil weight="fill" /></div>
+    <p className="family-notes-lead">Observaciones del entorno diario escritas por el cuidador. No modifican la ruta; son contexto para tu decisión.</p>
+    {notes.length === 0
+      ? <p className="family-notes-empty">La familia aún no ha registrado observaciones.</p>
+      : <>
+        <p className="family-notes-tally">{summary.total} notas · {summary.advances} avances · {summary.setbacks} retrocesos · {summary.pending_review === 0 ? 'todas revisadas' : `${summary.pending_review} sin revisar`}</p>
+        <ol className="family-notes-list">{notes.map((note) => <li key={note.id} className={note.reviewed_at ? 'reviewed' : 'unreviewed'}>
+          <div className="family-note-head">
+            <strong>{NOTE_PROGRESS_LABELS[note.progress]}</strong>
+            <span>{NOTE_SETTING_LABELS[note.setting]}</span>
+            <time dateTime={note.occurred_on}>{note.occurred_on}</time>
+            {!note.reviewed_at && <em>Sin revisar</em>}
+          </div>
+          <p>{note.observation}</p>
+          <small>Escrita por {note.author_name}</small>
+          {note.professional_comment
+            ? <p className="family-note-reply"><CheckCircle weight="fill" /> {note.professional_comment}</p>
+            : openNote === note.id
+              ? <div className="family-note-form">
+                <label htmlFor={`note-reply-${note.id}`}>Respuesta al cuidador</label>
+                <textarea id={`note-reply-${note.id}`} rows={3} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Confirma que leíste la observación e indica qué harán con ella." />
+                <div className="family-note-actions">
+                  <button type="button" onClick={() => { setOpenNote(null); setDraft(''); }}>Cancelar</button>
+                  <button type="button" className="primary" disabled={draft.trim().length < 3} onClick={() => send(note.id)}>Registrar respuesta</button>
+                </div>
+              </div>
+              : <button type="button" className="family-note-open" onClick={() => { setOpenNote(note.id); setDraft(''); }}>Responder a la familia</button>}
+        </li>)}</ol>
+      </>}
+  </article>;
 }
 
 function SynthesisReview({ report, loading, onValidate }: { report: NonNullable<CaseDetail['latest_barrier_report']>; loading: boolean; onValidate: (decision: 'approved' | 'rejected' | 'clarification_requested', summary: string, comment: string) => void }) {

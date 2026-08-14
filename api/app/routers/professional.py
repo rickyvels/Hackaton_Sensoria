@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,9 @@ from ..schemas import (
     ApprovalDecisionResponse,
     BarrierReportRead,
     CaseSummary,
+    FamilyNoteRead,
+    FamilyNoteReviewCreate,
+    FamilyNotesResponse,
     FamilyProfileRead,
     ProfessionalCaseDetailResponse,
     ProfessionalCaseListItem,
@@ -20,8 +23,11 @@ from ..schemas import (
 from ..services import (
     create_approval_decision,
     fetch_approval_history,
+    fetch_family_notes,
     fetch_latest_barrier_report,
     fetch_tasks,
+    review_family_note,
+    summarize_family_notes,
     validate_synthesis,
 )
 
@@ -43,6 +49,8 @@ async def review_synthesis(
         latest_barrier_report=BarrierReportRead.model_validate(report),
         approval_history=await fetch_approval_history(session, case_id=case_id),
         tasks=await fetch_tasks(session, case_id=case_id, barrier_report_id=report.id),
+        family_notes=await fetch_family_notes(session, case_id=case_id),
+        family_notes_summary=await summarize_family_notes(session, case_id=case_id),
     )
 
 
@@ -61,6 +69,7 @@ async def list_professional_cases(
     items: list[ProfessionalCaseListItem] = []
     for case, _, family_name in result.all():
         latest_report = await fetch_latest_barrier_report(session, case_id=case.id)
+        notes_summary = await summarize_family_notes(session, case_id=case.id)
         items.append(
             ProfessionalCaseListItem(
                 id=case.id,
@@ -68,8 +77,10 @@ async def list_professional_cases(
                 family_name=family_name,
                 patient_name=case.patient_name,
                 route_status=case.route_status,
+                care_stage=case.care_stage,
                 approval_status=case.approval_status,
                 last_barrier_title=latest_report.title if latest_report else None,
+                unreviewed_notes=notes_summary.pending_review,
                 updated_at=case.updated_at,
             )
         )
@@ -89,8 +100,6 @@ async def get_professional_case(
     )
     row = result.first()
     if row is None:
-        from fastapi import HTTPException, status
-
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
     current_case, profile = row
     latest_report = await fetch_latest_barrier_report(session, case_id=case_id)
@@ -106,6 +115,38 @@ async def get_professional_case(
         latest_barrier_report=BarrierReportRead.model_validate(latest_report) if latest_report else None,
         approval_history=approval_history,
         tasks=tasks,
+        family_notes=await fetch_family_notes(session, case_id=case_id),
+        family_notes_summary=await summarize_family_notes(session, case_id=case_id),
+    )
+
+
+@router.get("/cases/{case_id}/notes", response_model=FamilyNotesResponse)
+async def list_case_notes(
+    case_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_role("professional")),
+) -> FamilyNotesResponse:
+    case = await session.scalar(
+        select(CaseRecord).where(CaseRecord.id == case_id, CaseRecord.professional_user_id == user.id)
+    )
+    if case is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+    return FamilyNotesResponse(
+        notes=await fetch_family_notes(session, case_id=case_id),
+        summary=await summarize_family_notes(session, case_id=case_id),
+    )
+
+
+@router.post("/cases/{case_id}/notes/{note_id}/review", response_model=FamilyNoteRead)
+async def comment_family_note(
+    case_id: int,
+    note_id: int,
+    payload: FamilyNoteReviewCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(require_role("professional")),
+) -> FamilyNoteRead:
+    return await review_family_note(
+        session, case_id=case_id, note_id=note_id, payload=payload, professional=user
     )
 
 
