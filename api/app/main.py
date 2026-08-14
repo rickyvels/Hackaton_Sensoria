@@ -1,58 +1,49 @@
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import get_settings
-from .database import Base, SessionLocal, engine
-from .migrations import ensure_orchestration_schema
-from .orchestration import orchestration_manager
 from .routers import auth, cases, family, orchestration, professional
-from .seed import seed_demo_data
+from .startup import ensure_ready, shutdown
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-        await ensure_orchestration_schema(connection)
-    if engine.url.get_backend_name() == "sqlite" and engine.url.database:
-        database_path = Path(engine.url.database)
-        if database_path.exists():
-            os.chmod(database_path, 0o600)
-    if settings.environment.lower() == "demo":
-        async with SessionLocal() as session:
-            async with session.begin():
-                await seed_demo_data(session)
-    await orchestration_manager.start()
-    await orchestration_manager.recover()
+    # Un servidor de larga vida puede preparar todo por adelantado. En serverless el ciclo de
+    # vida no es un punto fiable de arranque, así que `ensure_ready` también se llama por
+    # petición: es idempotente y sale de inmediato una vez la instancia está lista.
+    await ensure_ready()
     yield
-    await orchestration_manager.stop()
+    await shutdown()
 
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
-app.add_middleware(
+
+# La instancia NO se llama `app` a propósito. Vercel construye una función por cada módulo bajo
+# `api/` que exponga una aplicación ASGI con ese nombre, así que llamarla `app` aquí publicaría
+# una segunda copia de toda la API en `/api/app/main`. El único entrypoint es `api/index.py`.
+api_app = FastAPI(title=settings.app_name, lifespan=lifespan)
+api_app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(auth.router, prefix=settings.api_prefix)
-app.include_router(family.router, prefix=settings.api_prefix)
-app.include_router(professional.router, prefix=settings.api_prefix)
-app.include_router(cases.router, prefix=settings.api_prefix)
-app.include_router(orchestration.router, prefix=settings.api_prefix)
+api_app.include_router(auth.router, prefix=settings.api_prefix)
+api_app.include_router(family.router, prefix=settings.api_prefix)
+api_app.include_router(professional.router, prefix=settings.api_prefix)
+api_app.include_router(cases.router, prefix=settings.api_prefix)
+api_app.include_router(orchestration.router, prefix=settings.api_prefix)
 
 
-@app.middleware("http")
+@api_app.middleware("http")
 async def security_headers(request: Request, call_next):
+    await ensure_ready()
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -62,6 +53,6 @@ async def security_headers(request: Request, call_next):
     return response
 
 
-@app.exception_handler(Exception)
+@api_app.exception_handler(Exception)
 async def unhandled_exception_handler(_: Request, __: Exception) -> JSONResponse:
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})

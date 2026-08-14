@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import running_on_vercel
 from ..database import SessionLocal, get_session
 from ..dependencies import require_role
 from ..models import BarrierReport, CaseEvent, CaseRecord, OrchestrationRun, User
@@ -136,9 +137,14 @@ async def stream_run_events(
 ) -> StreamingResponse:
     run = await _professional_run(session, run_id, user)
     case_id = run.case_id
+    # Sin worker de fondo, esta invocación es la única que puede hacer avanzar la corrida.
+    # `running` aquí significa que una invocación anterior se congeló a medias: `_execute`
+    # se salta los agentes ya completados, así que retomarla es la recuperación.
+    drive_inline = running_on_vercel() and run.status in {"queued", "running"}
 
     async def event_stream():
         queue = orchestration_manager.broker.subscribe(run_id)
+        execution: asyncio.Task[None] | None = None
         seen: set[int] = set()
         try:
             async with SessionLocal() as stream_session:
@@ -161,10 +167,18 @@ async def stream_run_events(
                     return
             if not follow:
                 return
+            if drive_inline:
+                # La suscripción ya está activa, así que ningún evento de la corrida se pierde
+                # entre el arranque y el primer `queue.get()`.
+                execution = asyncio.create_task(orchestration_manager.execute_inline(run_id))
             while True:
                 try:
-                    payload = await asyncio.wait_for(queue.get(), timeout=15)
+                    payload = await asyncio.wait_for(
+                        queue.get(), timeout=2 if execution is not None else 15
+                    )
                 except TimeoutError:
+                    if execution is not None and execution.done() and queue.empty():
+                        return
                     yield "event: ping\ndata: {}\n\n"
                     continue
                 if payload["id"] in seen:
@@ -174,6 +188,12 @@ async def stream_run_events(
                 if _is_terminal_event(payload):
                     return
         finally:
+            if execution is not None:
+                # No hace falta esperarla: el orquestador confirma la transacción antes de
+                # publicar cada evento, así que al recibir el terminal el estado ya es durable.
+                # Si en cambio se llega aquí porque el cliente cortó, cancelar deja la corrida
+                # en `running` y la siguiente apertura del stream la retoma.
+                execution.cancel()
             orchestration_manager.broker.unsubscribe(run_id, queue)
 
     return StreamingResponse(

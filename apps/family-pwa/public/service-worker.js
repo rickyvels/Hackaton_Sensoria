@@ -1,9 +1,17 @@
-const CACHE = 'ruta-viva-family-v2';
+const CACHE = 'ruta-viva-family-v3';
 const STATIC_PATH = /\.(?:css|js|png|svg|webp|ico|woff2?)$/i;
 
-function isStaticAsset(url) {
+// En el despliegue de un solo dominio la plataforma profesional comparte origen bajo /pro/.
+// Este service worker pertenece a la PWA familiar y su alcance no debe invadirla: sin esta
+// exclusión, una navegación a /pro/ sin conexión respondería con la aplicación equivocada.
+function isOwnedByFamilyApp(url) {
   return url.origin === self.location.origin
     && !url.pathname.startsWith('/api/')
+    && !url.pathname.startsWith('/pro/');
+}
+
+function isStaticAsset(url) {
+  return isOwnedByFamilyApp(url)
     && (STATIC_PATH.test(url.pathname) || url.pathname === '/manifest.webmanifest');
 }
 
@@ -30,7 +38,7 @@ self.addEventListener('message', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || event.request.headers.has('Authorization')) return;
   const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  if (!isOwnedByFamilyApp(url)) return;
 
   if (event.request.mode === 'navigate') {
     event.respondWith(

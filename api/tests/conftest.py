@@ -15,7 +15,7 @@ os.environ["NEUROALIANZA_AGENT_PROVIDER"] = "deterministic"
 sys.path.insert(0, str(API_ROOT))
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
-from app.main import app  # noqa: E402
+from app.main import api_app as app  # noqa: E402
 from app.orchestration import orchestration_manager  # noqa: E402
 from app.seed import seed_demo_data  # noqa: E402
 

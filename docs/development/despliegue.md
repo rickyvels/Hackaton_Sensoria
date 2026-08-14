@@ -5,156 +5,164 @@ del repositorio de GitHub.
 
 ## Arquitectura del despliegue
 
+Un solo proyecto de Vercel sirve las dos aplicaciones y la API bajo el **mismo dominio**:
+
 ```text
-Vercel  →  apps/platform      (plataforma profesional, estático)
-Vercel  →  apps/family-pwa    (PWA familiar, estático)
-Render  →  api                (FastAPI, contenedor persistente)
+https://<proyecto>.vercel.app/            PWA familiar        (apps/family-pwa)
+https://<proyecto>.vercel.app/pro/        Plataforma          (apps/platform)
+https://<proyecto>.vercel.app/api/v1/…    API FastAPI         (api/, función Python)
 ```
 
-### Por qué la API no va en Vercel
+El mismo origen no es una comodidad estética: elimina de raíz los dos fallos que más veces rompen
+una demostración desplegada.
 
-Vercel ejecuta funciones serverless: el proceso se congela en cuanto responde. La API de Ruta Viva
-necesita un proceso vivo entre peticiones porque:
+- **No hay CORS que configurar.** No existe el paso circular de desplegar los frontends para
+  conocer sus URL y luego volver al backend a autorizarlas.
+- **No hay URL de API congelada en el bundle.** Los frontends piden `/api/v1`, una ruta relativa.
+  Antes, cambiar `VITE_API_URL` obligaba a recompilar; ahora no hay nada que recompilar.
 
-- El worker de orquestación es una tarea de fondo con `asyncio.Queue` (`api/app/orchestration/manager.py`).
-- El canal de eventos es un pub/sub **en memoria** que conecta ese worker con el endpoint SSE. En
-  serverless, el evento se emitiría en una instancia y se escucharía en otra.
-- El stream de la corrida usa `StreamingResponse` con `text/event-stream`, que exige conexión
-  persistente.
-- SQLite escribe en disco.
+El enrutamiento vive en [`vercel.json`](../../vercel.json) y el ensamblado de los dos frontends en
+[`scripts/build-web.mjs`](../../scripts/build-web.mjs).
 
-Llevar la API a Vercel obligaría a rehacer la orquestación como stateless, sustituir SSE por sondeo
-y migrar a Postgres. Eso rompería la corrida observable con compuerta humana, que es el núcleo de la
-demostración.
+### Cómo funciona la orquestación sin un proceso vivo
+
+Vercel ejecuta funciones que se congelan en cuanto responden. La corrida de agentes necesita un
+productor de eventos y un consumidor del stream, y el canal pub/sub del MVP vive en memoria. La
+solución es que **ambos compartan invocación**:
+
+1. `POST /orchestration/cases/{id}/runs` crea la corrida y la deja en `queued`. No la ejecuta.
+2. `GET /orchestration/runs/{id}/events` se suscribe al canal, y solo entonces lanza la ejecución
+   dentro de esa misma invocación. Productor y consumidor comparten proceso, así que ningún
+   evento se pierde entre instancias.
+3. La corrida se detiene sola en la compuerta humana y la función termina.
+4. Tras la decisión profesional la corrida vuelve a `queued`, el frontend reabre el stream y la
+   siguiente invocación la retoma desde donde quedó.
+
+Fuera de Vercel (local o Render) sigue funcionando el worker de fondo de siempre. La diferencia la
+decide `NEUROALIANZA_*`/`VERCEL` en tiempo de ejecución, no dos ramas de código distintas.
 
 **Ollama no se despliega.** En la nube se usa `NEUROALIANZA_AGENT_PROVIDER=deterministic`, que
 conserva el mismo contrato y permite recorrer el flujo completo sin modelo ni red externa.
 
 ---
 
-## Paso 1 — Publicar la API en Render
+## Paso 1 — Crear la base de datos
 
-1. Entra a [render.com](https://render.com) y crea una cuenta con GitHub.
-2. **New → Blueprint**.
-3. Selecciona el repositorio `neuroalianza-ruta-viva-mvp`. Render detectará `render.yaml`.
-4. Confirma la creación del servicio `ruta-viva-api`.
-5. En la pantalla de variables, deja `NEUROALIANZA_CORS_ORIGINS` **vacía por ahora**: aún no existen
-   las URL de Vercel. Volveremos en el paso 3.
-6. Espera a que el despliegue termine y **copia la URL** del servicio. Tendrá esta forma:
+SQLite escribe en disco y el sistema de archivos de una función es efímero y no se comparte entre
+instancias. La demostración necesita Postgres.
 
-   ```text
-   https://ruta-viva-api.onrender.com
-   ```
+1. En Vercel entra a **Storage → Create Database → Neon (Serverless Postgres)**.
+2. Elige el plan gratuito y la región más cercana.
+3. Conéctala al proyecto cuando Vercel te lo ofrezca.
 
-Para comprobar que arrancó, abre `https://ruta-viva-api.onrender.com/api/v1/health`. Debe responder
-con un JSON de estado. Ese es también el endpoint que Render usa como health check.
+La integración inyecta sola las variables de conexión (`DATABASE_URL`, `DATABASE_URL_UNPOOLED` y
+compañía). No hay que copiarlas a mano: la API las detecta en ese orden y prefiere la conexión
+directa, porque en serverless cada invocación abre y cierra la suya.
+
+---
+
+## Paso 2 — Importar el repositorio
+
+1. **Add New → Project** e importa `rickyvels/Hackaton_Sensoria`.
+2. Deja el **Root Directory** en la raíz del repositorio. No lo cambies a `apps/…`: el proyecto
+   compila las dos aplicaciones a la vez.
+3. Vercel leerá `vercel.json`, así que no hace falta tocar Build Command ni Output Directory.
+
+---
+
+## Paso 3 — Variables de entorno
+
+Antes de pulsar Deploy, añade estas tres:
+
+| Key | Value | Por qué |
+| --- | --- | --- |
+| `NEUROALIANZA_JWT_SECRET` | una cadena aleatoria de 32 caracteres o más | Obligatoria |
+| `NEUROALIANZA_ENVIRONMENT` | `demo` | Siembra los datos sintéticos al arrancar |
+| `NEUROALIANZA_AGENT_PROVIDER` | `deterministic` | Sin Ollama en la nube |
+
+`NEUROALIANZA_JWT_SECRET` no es opcional y la API se niega a arrancar en Vercel sin ella. El motivo
+es concreto: en modo demostración el secreto se generaba al vuelo, y cada arranque en frío firmaría
+las sesiones con una clave distinta, cerrando la sesión del usuario en mitad de la demostración.
+
+Para generarla en Windows:
+
+```bash
+powershell -Command "[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))"
+```
+
+---
+
+## Paso 4 — Verificar
+
+Empieza por la API, que es donde se ven los fallos de configuración:
+
+```text
+https://<proyecto>.vercel.app/api/v1/health
+```
+
+Debe responder `{"status":"ok"}`. Si devuelve 500, el problema casi siempre es la base de datos o
+el secreto; míralo en **Logs → Runtime Logs**, no en los logs de build.
 
 > **Nota sobre `/docs`.** La cabecera `Content-Security-Policy: default-src 'none'` que aplica
 > `api/app/main.py` bloquea los scripts de Swagger UI, así que `/docs` cargará en blanco aunque el
 > servicio funcione. Es esperado. No lo uses como prueba de que la API arrancó, ni se lo muestres al
 > jurado como documentación navegable.
 
----
+Luego recorre el guion completo:
 
-## Paso 2 — Publicar los dos frontends en Vercel
-
-Son **dos proyectos separados** creados desde el mismo repositorio. La única diferencia es el
-directorio raíz.
-
-1. Entra a [vercel.com](https://vercel.com) y crea una cuenta con GitHub.
-2. **Add New → Project** e importa `neuroalianza-ruta-viva-mvp`.
-3. Configura el **primer** proyecto:
-
-   | Campo | Valor |
-   | --- | --- |
-   | Project Name | `ruta-viva-plataforma` |
-   | Root Directory | `apps/platform` |
-   | Framework Preset | Vite *(se detecta solo)* |
-
-4. Antes de pulsar Deploy, añade la variable de entorno:
-
-   | Key | Value |
-   | --- | --- |
-   | `VITE_API_URL` | `https://ruta-viva-api.onrender.com/api/v1` |
-
-   ⚠️ **El sufijo `/api/v1` es obligatorio.** Sin él ninguna petición encontrará su ruta.
-
-5. Deploy. Copia la URL resultante, por ejemplo `https://ruta-viva-plataforma.vercel.app`.
-6. Repite todo el paso 2 para el segundo proyecto, cambiando únicamente:
-
-   | Campo | Valor |
-   | --- | --- |
-   | Project Name | `ruta-viva-familia` |
-   | Root Directory | `apps/family-pwa` |
-
-   La variable `VITE_API_URL` es **la misma** en ambos proyectos.
-
----
-
-## Paso 3 — Autorizar el CORS en Render
-
-Ahora que existen las URL de Vercel, la API tiene que aceptarlas.
-
-1. Vuelve al servicio en Render → **Environment**.
-2. Edita `NEUROALIANZA_CORS_ORIGINS` con las dos URL separadas por coma **y sin espacios**:
-
-   ```text
-   https://ruta-viva-plataforma.vercel.app,https://ruta-viva-familia.vercel.app
-   ```
-
-3. Guarda. Render reinicia el servicio automáticamente.
-
-Sin este paso el navegador bloqueará todas las peticiones y las aplicaciones se verán cargadas pero
-sin datos.
-
----
-
-## Paso 4 — Verificar
-
-Recorre el guion de demostración completo:
-
-1. Abre la PWA familiar e inicia sesión con `12345678` / `familia123`.
+1. Abre `/` e inicia sesión como familiar con `12345678` / `familia123`.
 2. Reporta una dificultad.
-3. Abre la plataforma profesional e inicia sesión con `87654321` / `profesional123`.
+3. Abre `/pro/` e inicia sesión como profesional con `87654321` / `profesional123`.
 4. Valida la síntesis del aviso.
-5. Pulsa **Reproducir caso** y confirma que los eventos aparecen en vivo. **Esta es la prueba
-   crítica**: si los pasos se muestran progresivamente, el SSE funciona a través de Render.
+5. Pulsa **Reproducir caso**. **Esta es la prueba crítica**: si los pasos aparecen
+   progresivamente y no todos de golpe al final, el streaming funciona a través de Vercel.
 6. Aprueba en la compuerta humana y comprueba que la tarea aparece en la PWA familiar.
 
 ---
 
 ## Advertencias para la demostración ante el jurado
 
-### El plan gratuito de Render duerme el servicio
+### El primer acceso es más lento
 
-Tras 15 minutos sin tráfico, el servicio se suspende y el siguiente arranque tarda cerca de un
-minuto. Delante de un jurado eso parece una aplicación rota.
+No hay servicio que duerma, pero una función sin tráfico reciente arranca en frío: la primera
+petición paga el arranque del intérprete y la conexión a Postgres. Son segundos, no el minuto de un
+contenedor suspendido. Abrir la URL un par de minutos antes de presentar lo deja caliente.
 
-Opciones, de menor a mayor costo:
+### Los datos persisten entre despliegues
 
-- **Abrir la URL de la API entre 2 y 3 minutos antes** de presentar. Es lo mínimo imprescindible.
-- Configurar un ping externo cada 10 minutos con un servicio de monitoreo gratuito.
-- Pasar al plan de pago de Render (~7 USD/mes), que no duerme.
+Con Postgres el caso sintético **ya no se reinicia solo**. El sembrado solo actúa sobre una base
+vacía, así que si ensayas la demostración varias veces el caso queda con barreras y decisiones ya
+registradas.
 
-### Las variables de Vite se congelan al compilar
-
-`VITE_API_URL` se incrusta en el bundle **durante el build**, no se lee en tiempo de ejecución. Si
-cambias esa variable en Vercel, **debes volver a desplegar** el proyecto; reiniciar no basta.
-
-### La base de datos se reinicia
-
-El disco del plan gratuito es efímero: cada reinicio borra `neuroalianza.db`. Como
-`NEUROALIANZA_ENVIRONMENT=demo` vuelve a sembrar los datos sintéticos al arrancar, la demostración
-se restablece sola. Para esta entrega es una ventaja, no un defecto: el caso siempre parte limpio.
-
-Ten en cuenta que las sesiones abiertas se invalidan tras un reinicio y habrá que iniciar sesión de
-nuevo.
+Para volver a empezar limpio, borra las filas desde la consola de Neon o elimina y recrea la base de
+datos. Conviene hacerlo justo antes del pitch, no durante.
 
 ### Cuentas de demostración
 
 Las credenciales del paso 4 son sintéticas y ya están en el repositorio público. No corresponden a
 ninguna persona real. Si prefieres que no queden visibles durante el pitch, cámbialas en
 `api/app/seed.py` antes de desplegar.
+
+### Un solo entrypoint de Python
+
+Vercel construye una función por cada módulo bajo `api/` que exponga una aplicación ASGI llamada
+`app`. Por eso la instancia de `api/app/main.py` se llama `api_app` y solo `api/index.py` la
+reexporta como `app`. Si al añadir código vuelves a llamarla `app`, aparecerá una segunda función
+que publica una copia entera de la API en otra ruta. Compruébalo en **Deployment → Resources**:
+debe haber exactamente una función.
+
+---
+
+## Alternativa: la API en Render
+
+[`render.yaml`](../../render.yaml) sigue siendo válido y describe el despliegue de la API como
+contenedor persistente, con worker de fondo y SQLite. Es la ruta de respaldo si el modo serverless
+diera problemas: en ese caso los frontends necesitarían de nuevo `VITE_API_URL` absoluta y la
+autorización de CORS en `NEUROALIANZA_CORS_ORIGINS`.
+
+Para esa ruta se conservan `apps/platform/vercel.json` y `apps/family-pwa/vercel.json`, que
+configuran cada aplicación como un proyecto independiente con su propio Root Directory. En el
+despliegue de un solo dominio **no se usan**: manda el `vercel.json` de la raíz.
 
 ---
 
@@ -165,7 +173,7 @@ Actualiza la tabla de entregables del Anexo 1 con los enlaces definitivos:
 | Entregable | Enlace |
 | --- | --- |
 | Demo o prototipo funcional | URL de la PWA y de la plataforma |
-| Repositorio de código | https://github.com/miguel-isidro05/neuroalianza-ruta-viva-mvp |
+| Repositorio de código | https://github.com/rickyvels/Hackaton_Sensoria |
 
 Las bases exigen que el enlace sea **público y verificable**. Compruébalo en una ventana de
 incógnito antes de entregar.

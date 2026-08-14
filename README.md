@@ -15,6 +15,11 @@ api                 Backend FastAPI, reglas y agentes
 docs                Arquitectura, guías, referencias y material del MVP
 ```
 
+En la demostración pública las tres piezas se sirven desde un mismo dominio de Vercel: la PWA
+familiar en `/`, la plataforma en `/pro/` y la API en `/api/v1/`. Un solo origen evita el CORS y
+que la URL de la API quede congelada dentro del bundle. Ver
+[despliegue](docs/development/despliegue.md).
+
 Para integrar código o cambiar la orquestación, empieza por:
 
 - [Mapa del repositorio](docs/development/repository-map.md)
@@ -88,10 +93,13 @@ git clone https://github.com/miguel-isidro05/neuroalianza-ruta-viva-mvp.git
 cd neuroalianza-ruta-viva-mvp
 ```
 
-Crea el entorno de Python. En macOS o Linux:
+Crea el entorno de Python. `requirements.txt` contiene solo lo que se ejecuta en producción;
+`requirements-dev.txt` añade encima las herramientas de prueba, que es lo que necesitas en local.
+
+En macOS o Linux:
 
 ```bash
-python3 -m venv api/.venv && api/.venv/bin/pip install -r api/requirements.txt
+python3 -m venv api/.venv && api/.venv/bin/pip install -r api/requirements-dev.txt
 ```
 
 En Windows:
@@ -101,7 +109,7 @@ python -m venv api/.venv
 ```
 
 ```bash
-api\.venv\Scripts\pip install -r api\requirements.txt
+api\.venv\Scripts\pip install -r api\requirements-dev.txt
 ```
 
 Instala las dependencias de ambas aplicaciones:

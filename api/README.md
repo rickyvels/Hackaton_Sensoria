@@ -27,7 +27,7 @@ Backend FastAPI para el flujo sintético de Neuroalianza. Expone el acceso demo,
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:api_app --reload --host 127.0.0.1 --port 8000
 ```
 
 La base SQLite se crea automáticamente en `neuroalianza.db` durante el arranque. Para usar el modelo local, inicie Ollama en `http://127.0.0.1:11434` y descargue `qwen3:8b`. Si Ollama no está disponible, el backend puede usar el proveedor determinista configurando `NEUROALIANZA_AGENT_PROVIDER=deterministic`.

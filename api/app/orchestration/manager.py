@@ -11,7 +11,7 @@ from uuid import uuid4
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 
-from ..config import get_settings
+from ..config import get_settings, running_on_vercel
 from ..database import SessionLocal
 from ..models import BarrierReport, CaseEvent, CaseRecord, OrchestrationRun
 from ..services import emit_event, fetch_latest_barrier_report
@@ -68,8 +68,22 @@ class OrchestrationManager:
         self.broker = RunEventBroker()
 
     async def enqueue(self, run_id: str) -> None:
+        if running_on_vercel():
+            # Una instancia serverless se congela en cuanto responde, así que un worker de fondo
+            # no sobreviviría a esta petición. La corrida queda en `queued` y la conduce después
+            # el endpoint de streaming, donde productor y consumidor comparten invocación.
+            return
         await self.start()
         await self._queue.put(run_id)
+
+    async def execute_inline(self, run_id: str) -> None:
+        """Advance the run inside the caller's request, applying the worker's error policy."""
+        try:
+            await self._execute(run_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await self._mark_failed(run_id, exc)
 
     async def recover(self) -> None:
         """Reclaim durable work after an API restart."""

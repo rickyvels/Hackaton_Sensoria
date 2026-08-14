@@ -1,0 +1,6 @@
+# Las pruebas no forman parte de la función desplegada y sus dependencias no están en
+# requirements.txt, que en Vercel es solo el conjunto de producción.
+api/tests
+api/.venv
+**/__pycache__
+docs/research/eigent-graphify
