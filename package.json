@@ -1,0 +1,19 @@
+{
+  "name": "neuroalianza-ruta-viva-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "npm run dev:platform",
+    "dev:platform": "npm --prefix apps/platform run dev",
+    "dev:family": "npm --prefix apps/family-pwa run dev",
+    "dev:api": "node scripts/py.mjs -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
+    "build": "npm run build:platform && npm run build:family && npm run build:api",
+    "build:platform": "npm --prefix apps/platform run build",
+    "build:family": "npm --prefix apps/family-pwa run build",
+    "build:api": "node scripts/py.mjs -m compileall -q app",
+    "test": "npm run test:api",
+    "test:api": "node scripts/py.mjs -m pytest -q"
+  }
+}

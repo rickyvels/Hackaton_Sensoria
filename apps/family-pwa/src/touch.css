@@ -1,0 +1,13 @@
+.family-header button,
+.back-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+@media (pointer: coarse) {
+  .family-header button,
+  .back-button {
+    min-width: 48px;
+    min-height: 48px;
+  }
+}

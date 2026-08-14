@@ -1,0 +1,52 @@
+{
+  "backend/chat_controller.py": {
+    "mtime": 1786432030.7572188,
+    "ast_hash": "1e5321e5544a0525771e61b45a21e842",
+    "semantic_hash": "1e5321e5544a0525771e61b45a21e842"
+  },
+  "backend/task.py": {
+    "mtime": 1786432030.7539546,
+    "ast_hash": "4be307d4f9c7c5efc3b8829c5af6cacb",
+    "semantic_hash": "4be307d4f9c7c5efc3b8829c5af6cacb"
+  },
+  "backend/task_controller.py": {
+    "mtime": 1786432030.7556245,
+    "ast_hash": "e4be47e371967ce05d8f1b4df124c608",
+    "semantic_hash": "e4be47e371967ce05d8f1b4df124c608"
+  },
+  "frontend/TaskLogPanelContent.tsx": {
+    "mtime": 1786432030.7522712,
+    "ast_hash": "ffd433bf56bb83bcf33270c5f1cf1ac5",
+    "semantic_hash": "ffd433bf56bb83bcf33270c5f1cf1ac5"
+  },
+  "frontend/activityLogStore.ts": {
+    "mtime": 1786432030.7506042,
+    "ast_hash": "602ecfb163cff6d154f1e74368ab9dfa",
+    "semantic_hash": "602ecfb163cff6d154f1e74368ab9dfa"
+  },
+  "frontend/useBackgroundTaskProcessor.ts": {
+    "mtime": 1786432030.7488956,
+    "ast_hash": "d370f5c4f1396370dba3b60e789abcf4",
+    "semantic_hash": "d370f5c4f1396370dba3b60e789abcf4"
+  },
+  "frontend/useExecutionSubscription.ts": {
+    "mtime": 1786432030.7471077,
+    "ast_hash": "11fc42bc93d9a542ffda587eb7430c7b",
+    "semantic_hash": "11fc42bc93d9a542ffda587eb7430c7b"
+  },
+  "references/semantica-lineage.tsx": {
+    "mtime": 1786432030.7619126,
+    "ast_hash": "82536dcf1daabb54497766068825aace",
+    "semantic_hash": "82536dcf1daabb54497766068825aace"
+  },
+  "references/voicebox-events.py": {
+    "mtime": 1786432030.758743,
+    "ast_hash": "70c5b4250dfc5e1b42ff64a3601a6724",
+    "semantic_hash": "70c5b4250dfc5e1b42ff64a3601a6724"
+  },
+  "references/voicebox-task-queue.py": {
+    "mtime": 1786432030.760363,
+    "ast_hash": "6196a9b9d4e2f14fd4beb9de075b8bc4",
+    "semantic_hash": "6196a9b9d4e2f14fd4beb9de075b8bc4"
+  }
+}

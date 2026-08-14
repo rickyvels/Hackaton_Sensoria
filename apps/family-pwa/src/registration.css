@@ -1,0 +1,8 @@
+.access-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 24px; padding: 4px; border: 1px solid #cde2de; border-radius: 13px; background: #eaf4f2; }
+.access-tabs button { min-height: 44px; border: 0; border-radius: 9px; background: transparent; color: #537577; font-size: 12px; font-weight: 800; }
+.access-tabs button[aria-selected='true'] { background: #fff; color: #0d7171; box-shadow: 0 3px 10px #245d5d12; }
+.registration-form { gap: 13px !important; }
+.registration-form label small { margin: 0; color: #6e8b8d; text-align: left; font-family: Manrope, ui-sans-serif, sans-serif; font-size: 9px; font-weight: 600; line-height: 1.35; }
+.consent-check { grid-template-columns: 20px 1fr; align-items: start; gap: 9px !important; padding: 12px; border: 1px solid #cfe2df; border-radius: 12px; background: #f8fcfb; font-weight: 600 !important; line-height: 1.45; }
+.consent-check input { width: 20px !important; min-height: 20px !important; margin: 0; accent-color: #0d7978; }
+.family-notice { margin: 2px 0; padding: 11px; border: 1px solid #bee5d5; border-radius: 11px; background: #f0fbf5; color: #277152; font-size: 11px; line-height: 1.5; }

@@ -1,0 +1,33 @@
+/* The coordination view is intentionally summary-first: details stay one click away. */
+.platform-header h1 { max-width: 760px; font-size: clamp(32px, 3.25vw, 48px); line-height: 1.02; }
+.overview-clarity { gap: 14px; }
+.overview-command { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, .75fr); gap: 14px; }
+.overview-next-action, .synthesis-snapshot, .agent-overview { border: 1px solid #c7ddd7; border-radius: 18px; background: #fff; }
+.overview-next-action { min-height: 185px; padding: 22px; background: linear-gradient(125deg, #eff9f6, #fff); }
+.overview-next-action p, .synthesis-snapshot p, .agent-overview-heading p { margin: 0; color: #537f7e; font: 700 10px/1.3 'DM Mono', monospace; letter-spacing: .1em; }
+.overview-next-action h2 { max-width: 27ch; margin: 8px 0; color: #163f43; font-size: clamp(21px, 2.1vw, 29px); line-height: 1.12; letter-spacing: -.045em; }
+.overview-next-action > span { display: block; max-width: 64ch; color: #557578; font-size: 13px; line-height: 1.5; }
+.overview-next-action button, .agent-overview-heading button { min-height: 44px; margin-top: 15px; padding: 0 13px; border: 1px solid #97c9c0; border-radius: 11px; background: #127a74; color: #fff; display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 800; }
+.overview-next-action button:active, .agent-overview-heading button:active { transform: scale(.97); }
+.synthesis-snapshot { min-height: 185px; padding: 19px; display: flex; justify-content: space-between; gap: 12px; }
+.snapshot-icon { width: 38px; height: 38px; display: grid; place-items: center; margin-bottom: 11px; border-radius: 12px; background: #dff2ed; color: #127a74; font-size: 19px; }
+.synthesis-snapshot h3 { margin: 5px 0; color: #234f52; font-size: 17px; line-height: 1.2; }
+.synthesis-snapshot small { display: block; max-width: 28ch; color: #668184; font-size: 11px; line-height: 1.5; }
+.synthesis-snapshot > b { height: fit-content; padding: 6px 8px; border-radius: 8px; background: #eaf3f1; color: #35716d; font-size: 10px; white-space: nowrap; }
+.snapshot-pending { border-color: #e4c87e; background: #fffdf7; }.snapshot-pending .snapshot-icon { background: #fff0cf; color: #93661c; }.snapshot-pending > b { background: #fff0cf; color: #8a5e18; }
+.overview-clarity .platform-kpis { margin: 0; }.overview-clarity .metric { min-height: 102px; }.overview-clarity .metric strong { font-size: 28px; }.overview-clarity .metric-text { font-size: 19px !important; line-height: 1.15; }
+.overview-clarity .care-route { padding: 17px; }.overview-clarity .care-route-heading h2 { font-size: 18px; }.overview-clarity .care-route ol { margin-top: 13px; }.overview-clarity .care-route li { min-height: 91px; }
+.agent-overview { padding: 19px; }
+.agent-overview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.agent-overview-heading h2 { margin: 5px 0; color: #173f43; font-size: 21px; letter-spacing: -.04em; }.agent-overview-heading span { display: block; max-width: 650px; color: #597779; font-size: 12px; line-height: 1.5; }.agent-overview-heading button { margin-top: 0; background: #fff; color: #226063; }
+.agent-overview ol { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin: 17px 0 0; padding: 0; list-style: none; }
+.agent-overview-step { min-width: 0; min-height: 105px; padding: 11px; border: 1px solid #d4e4df; border-top: 3px solid var(--agent-accent); border-radius: 13px; background: #f9fcfb; display: flex; gap: 9px; }.agent-overview-step.mint { --agent-accent: #168b81; }.agent-overview-step.amber { --agent-accent: #b87921; }.agent-overview-step.coral { --agent-accent: #b45a46; }.agent-overview-step.violet { --agent-accent: #6554a5; }.agent-overview-step.is-working { background: #f1fbf8; box-shadow: 0 0 0 3px rgb(22 139 129 / 11%); }
+.agent-overview-step > span { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--agent-accent) 15%, white); color: var(--agent-accent); font-size: 16px; }.agent-overview-step div { min-width: 0; display: grid; align-content: start; gap: 3px; }.agent-overview-step small { color: #71898b; font-size: 9px; line-height: 1.25; }.agent-overview-step strong { color: #214e52; font-size: 12px; line-height: 1.25; }.agent-overview-step em { color: #497574; font-size: 10px; font-style: normal; font-weight: 800; }
+
+/* Trace: do not reserve half the page for an empty inspector. */
+.trace-workspace-empty { grid-template-columns: minmax(0, 1fr); }.trace-workspace-empty .graph-inspector-empty { display: none; }.trace-workspace-selected { grid-template-columns: minmax(0, 1.35fr) minmax(250px, .65fr); }
+.decision-map-panel { min-height: auto; }.decision-map { grid-template-columns: repeat(5, minmax(170px, 1fr)); }.decision-map li > button, .decision-map li > div { min-height: 128px; }.decision-map strong { font-size: 12px; line-height: 1.35; }.technical-flow { margin-top: 14px; }.technical-flow .graph-canvas { height: 420px; }
+.artifact-card-trigger { align-items: center; }.artifact-card-copy strong { -webkit-line-clamp: 2; }.artifact-card dl { grid-template-columns: 1fr; }.artifact-card dd { max-width: 70ch; }
+
+@media (max-width: 1050px) { .overview-command { grid-template-columns: 1fr; }.agent-overview ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }.trace-workspace-selected { grid-template-columns: 1fr; }.trace-workspace-selected .graph-inspector { position: static; max-height: none; } }
+@media (max-width: 700px) { .platform-header h1 { font-size: 34px; }.overview-next-action, .synthesis-snapshot, .agent-overview { padding: 16px; border-radius: 15px; }.overview-next-action { min-height: auto; }.overview-next-action button { width: 100%; justify-content: center; }.agent-overview-heading { flex-direction: column; }.agent-overview-heading button { width: 100%; justify-content: center; }.agent-overview ol { grid-template-columns: 1fr; }.agent-overview-step { min-height: 74px; align-items: center; }.overview-clarity .care-route ol { grid-template-columns: 1fr; }.overview-clarity .care-route li { min-height: 0; }.decision-map { grid-template-columns: 1fr; overflow: visible; }.decision-map li { min-width: 0; padding: 0 0 0 37px; }.decision-map li:not(:last-child)::after { content: '↓'; top: auto; right: auto; bottom: -18px; left: 20px; }.decision-step-number { top: 12px; left: 0; }.decision-map li > button, .decision-map li > div { min-height: 88px; }.technical-flow .graph-canvas { height: 340px; min-height: 340px; } }

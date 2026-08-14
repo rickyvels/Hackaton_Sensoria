@@ -1,0 +1,32 @@
+# Blueprint de Render para la API de Ruta Viva.
+# La API necesita un contenedor persistente: la cola de orquestación, el worker de fondo y el
+# canal de eventos SSE viven en memoria de un único proceso. Ver docs/development/despliegue.md.
+services:
+  - type: web
+    name: ruta-viva-api
+    runtime: python
+    plan: free
+    rootDir: api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    envVars:
+      # Si el build falla por la versión, prueba otra 3.11–3.13 disponible en Render.
+      - key: PYTHON_VERSION
+        value: 3.12.7
+
+      # Mantiene el sembrado de datos sintéticos en cada arranque.
+      - key: NEUROALIANZA_ENVIRONMENT
+        value: demo
+
+      # Sin Ollama en la nube. El proveedor determinista conserva el flujo completo.
+      - key: NEUROALIANZA_AGENT_PROVIDER
+        value: deterministic
+
+      # Render genera el secreto una sola vez y lo mantiene estable entre despliegues.
+      - key: NEUROALIANZA_JWT_SECRET
+        generateValue: true
+
+      # Se completa a mano con las URL reales de Vercel, separadas por coma.
+      - key: NEUROALIANZA_CORS_ORIGINS
+        sync: false
