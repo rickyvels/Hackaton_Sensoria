@@ -179,11 +179,15 @@ class OrchestrationRun(Base):
 
     case: Mapped[CaseRecord] = sa_relationship(back_populates="orchestration_runs")
 
+    # El índice es parcial a propósito: una barrera admite muchas corridas históricas pero solo
+    # una activa. La condición debe declararse por dialecto o Postgres crearía un índice único
+    # total y rechazaría la segunda corrida de una misma barrera.
     __table_args__ = (
         Index(
             "uq_active_run_per_barrier",
             "barrier_report_id",
             unique=True,
             sqlite_where=status.in_(("queued", "running", "paused", "waiting_approval")),
+            postgresql_where=status.in_(("queued", "running", "paused", "waiting_approval")),
         ),
     )

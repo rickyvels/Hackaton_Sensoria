@@ -1,0 +1,7 @@
+# Dependencias de desarrollo. Vercel instala solo requirements.txt, así que las herramientas de
+# prueba se mantienen aparte para no alargar el build ni entrar en el paquete de la función.
+-r requirements.txt
+pytest==9.0.3
+pytest-asyncio==1.4.0
+anyio==4.10.0
+ruff==0.12.10
