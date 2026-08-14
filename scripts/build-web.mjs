@@ -49,9 +49,11 @@ mkdirSync(dist, { recursive: true });
 for (const app of apps) {
   console.log(`[build-web] Compilando ${app.prefix} con base ${app.base}`);
   install(app.prefix);
-  run(['--prefix', app.prefix, 'run', 'build'], {
+  // Lo que va tras `--` se añade al final del script, es decir a `vite build`. Pasar el prefijo
+  // por la bandera nativa evita leer `process.env` dentro de vite.config.ts, que obligaría a
+  // instalar @types/node solo para type-chequear ese archivo.
+  run(['--prefix', app.prefix, 'run', 'build', '--', `--base=${app.base}`], {
     VITE_API_URL: '/api/v1',
-    VITE_BASE_PATH: app.base,
   });
   cpSync(join(root, app.prefix, 'dist'), app.target, { recursive: true });
 }
