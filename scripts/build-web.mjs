@@ -29,14 +29,31 @@ function run(args, env) {
   });
 }
 
+function install(prefix) {
+  // Cada aplicación tiene su propio node_modules y sus binarios (tsc, vite) viven ahí. Sin este
+  // paso el build falla con "tsc: command not found", porque instalar la raíz no instala nada:
+  // el package.json de la raíz solo orquesta y no declara dependencias.
+  try {
+    run(['--prefix', prefix, 'ci']);
+  } catch {
+    // `npm ci` aborta si el lockfile y el package.json se desincronizan. Preferimos un
+    // despliegue que compile a uno que se caiga por una discrepancia de versiones.
+    console.warn(`[build-web] "npm ci" falló en ${prefix}; se reintenta con "npm install".`);
+    run(['--prefix', prefix, 'install']);
+  }
+}
+
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
 for (const app of apps) {
-  run(['--prefix', app.prefix, 'ci']);
+  console.log(`[build-web] Compilando ${app.prefix} con base ${app.base}`);
+  install(app.prefix);
   run(['--prefix', app.prefix, 'run', 'build'], {
     VITE_API_URL: '/api/v1',
     VITE_BASE_PATH: app.base,
   });
   cpSync(join(root, app.prefix, 'dist'), app.target, { recursive: true });
 }
+
+console.log(`[build-web] Listo. PWA familiar en /, plataforma en /pro/.`);
