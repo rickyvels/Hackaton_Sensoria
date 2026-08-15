@@ -1,26 +1,105 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "fluid": true,
-  "installCommand": "npm install",
-  "buildCommand": "node scripts/build-web.mjs",
-  "outputDirectory": "dist",
-  "functions": {
-    "api/index.py": { "maxDuration": 60 }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/pro", "destination": "/pro/index.html" },
-    { "source": "/pro/(.*)", "destination": "/pro/index.html" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/service-worker.js",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
-    },
-    {
-      "source": "/manifest.webmanifest",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
-    }
-  ]
+    
+"services"
+:
+ 
+{
+        
+"frontend"
+:
+ 
+{
+            
+"root"
+:
+ 
+"frontend"
+,
+            
+"framework"
+:
+ 
+"vite"
+        
+}
+,
+        
+"backend"
+:
+ 
+{
+            
+"root"
+:
+ 
+"backend"
+        
+}
+    
+}
+,
+    
+"rewrites"
+:
+ 
+[
+        
+{
+            
+"source"
+:
+ 
+"/api(/.*)?"
+,
+            
+"destination"
+:
+ 
+{
+                
+"type"
+:
+ 
+"service"
+,
+                
+"service"
+:
+ 
+"backend"
+            
+}
+        
+}
+,
+        
+{
+            
+"source"
+:
+ 
+"/(.*)"
+,
+            
+"destination"
+:
+ 
+{
+                
+"type"
+:
+ 
+"service"
+,
+                
+"service"
+:
+ 
+"frontend"
+            
+}
+        
+}
+    
+]
 }
