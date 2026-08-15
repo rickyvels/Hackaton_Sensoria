@@ -38,6 +38,28 @@ export function LandingPage() {
           </Link>
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Portal del personal médico y administrativo. Vive fuera de esta aplicación, así
+                que sale en una pestaña nueva y no pasa por el enrutador. */}
+            <a
+              href="https://github.com/miguel-isidro05/neuroalianza-ruta-viva-mvp"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Personal médico y administrativo (se abre en una pestaña nueva)"
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                className="min-h-11 w-11 justify-center gap-1.5 px-0 font-medium lg:w-auto lg:px-3"
+              >
+                <Stethoscope className="w-4 h-4 shrink-0 text-primary" />
+                {/* Medido en el header real: el rótulo completo solo cabe junto a los otros dos
+                    botones desde 1280px, y el corto desde 1024px. Por debajo de eso el badge
+                    "INSN San Borja 2026" se parte en dos líneas y rebasa el alto del header, así
+                    que ahí queda solo el icono (el nombre lo da el aria-label del enlace). */}
+                <span className="hidden lg:inline xl:hidden">Personal Médico</span>
+                <span className="hidden xl:inline">Personal Médico y Administrativo</span>
+              </Button>
+            </a>
             <Link to="/app/demo">
               <Button variant="ghost" size="sm" className="hidden sm:inline-flex gap-1.5 font-medium">
                 <Sparkles className="w-4 h-4 text-primary" />
