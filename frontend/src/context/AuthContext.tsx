@@ -6,8 +6,9 @@ import React, { createContext, useCallback, useContext, useState } from "react"
  * IMPORTANTE: esto NO es autenticación real. El backend de este repositorio no
  * expone endpoints de sesión, así que el acceso se resuelve en el navegador y
  * solo sirve para recorrer la demostración. No hay contraseñas almacenadas, no
- * hay token verificable y cualquiera puede entrar. Antes de manejar datos de
- * pacientes reales hay que sustituirlo por autenticación en el servidor.
+ * hay token verificable y cualquiera puede entrar: la contraseña ni se mira y
+ * cualquier DNI inventado abre sesión sin registrarse. Antes de manejar datos
+ * de pacientes reales hay que sustituirlo por autenticación en el servidor.
  */
 
 /** Tipos de seguro del formulario "Tipo de seguro" de la Libreta CRED del MINSA. */
@@ -155,10 +156,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(
     (dni: string) => {
-      const account = dni === DEMO_DNI ? DEMO_SESSION : accounts[dni]
-      if (!account) {
-        throw new Error("No encontramos ese DNI. Regístrate para crear tu acceso.")
-      }
+      // Demostración abierta: no hay paso de registro obligatorio. Cualquier DNI inventado
+      // entra y recorre la aplicación con el caso sintético precargado, que es lo que se
+      // quiere enseñar. Un DNI desconocido hereda los datos de la cuenta de demostración y
+      // conserva el número tecleado, para que la pantalla no muestre un perfil vacío.
+      const account =
+        dni === DEMO_DNI ? DEMO_SESSION : (accounts[dni] ?? { ...DEMO_SESSION, dni })
       setSession(account)
       persist(SESSION_STORAGE_KEY, JSON.stringify(account))
       return account

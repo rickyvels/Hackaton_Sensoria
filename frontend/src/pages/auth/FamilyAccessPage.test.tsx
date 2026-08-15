@@ -75,13 +75,15 @@ describe("FamilyAccessPage", () => {
     expect(screen.getByText("Aplicación abierta")).toBeInTheDocument()
   })
 
-  it("rechaza un DNI que no está registrado", () => {
+  it("deja entrar con un DNI inventado, sin pasar por el registro", () => {
     renderAccess()
 
     fireEvent.change(screen.getByLabelText("DNI"), { target: { value: "00000000" } })
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "x" } })
     fireEvent.click(screen.getByRole("button", { name: /Ingresar a mi ruta/ }))
 
-    expect(screen.getByRole("alert")).toHaveTextContent("No encontramos ese DNI")
+    expect(screen.getByText("Aplicación abierta")).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
   it("ofrece los cinco tipos de seguro de la libreta CRED", () => {
