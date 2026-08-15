@@ -4,3 +4,11 @@ api/tests
 api/.venv
 **/__pycache__
 docs/research/eigent-graphify
+
+# Copias completas del repositorio que quedaron dentro de la raíz del servicio `backend`.
+# `backend/frontend` es idéntico a `frontend/` y `backend/backend/app` es una versión anterior
+# de `backend/app`. Nada bajo `backend/app` las importa, pero al vivir dentro del root del
+# servicio se subirían enteras y la detección de framework vería una app Vite dentro del backend.
+backend/frontend
+backend/backend
+backend/tests
