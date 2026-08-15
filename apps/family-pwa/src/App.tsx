@@ -74,7 +74,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const reduceMotion = useReducedMotion();
-  const { lang, setLang, t } = useLanguage();
+  const { lang, setLang, t, tr } = useLanguage();
 
   const refresh = useCallback(async (token = session?.access_token) => {
     if (!token) return;
@@ -118,7 +118,7 @@ export default function App() {
     <header className="family-header"><div className="family-brand"><Brain weight="fill" /><span>Sensoria</span><small>{t('brandTagline')}</small></div><LanguageToggle lang={lang} onChange={setLang} label={t('languageLabel')} /><button onClick={() => setSession(null)} aria-label={t('signOut')}><SignOut /></button></header>
     {screen === 'report' ? <ReportScreen onBack={() => setScreen('route')} onSubmit={report} loading={loading} error={error} /> : <section id="family-content" className="family-workspace" tabIndex={-1}>
       <motion.div key={screen} initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .2, ease: [0.23, 1, .32, 1] }}>
-        {screen === 'route' && <RouteScreen family={family} caseData={caseData} isApproved={isApproved} isPending={isPending} isReported={isReported} isInReview={isInReview} loading={loading} error={error} t={t} onReport={() => setScreen('report')} onAgenda={() => navigate('agenda')} />}
+        {screen === 'route' && <RouteScreen family={family} caseData={caseData} isApproved={isApproved} isPending={isPending} isReported={isReported} isInReview={isInReview} loading={loading} error={error} t={t} tr={tr} onReport={() => setScreen('report')} onAgenda={() => navigate('agenda')} />}
         {screen === 'agenda' && <AgendaScreen caseData={caseData} isApproved={isApproved} isInReview={isInReview} onReport={() => setScreen('report')} />}
         {screen === 'notebook' && <NotebookScreen token={session.access_token} caseId={caseData.case.id} patientName={family.family_profile.patient_name} />}
         {screen === 'documents' && <DocumentsScreen isInReview={isInReview} />}
@@ -129,14 +129,14 @@ export default function App() {
   </main>;
 }
 
-function RouteScreen({ family, caseData, isApproved, isPending, isReported, isInReview, loading, error, t, onReport, onAgenda }: { family: FamilyData; caseData: CurrentCase; isApproved: boolean; isPending: boolean; isReported: boolean; isInReview: boolean; loading: boolean; error: string; t: Translate; onReport: () => void; onAgenda: () => void }) {
+function RouteScreen({ family, caseData, isApproved, isPending, isReported, isInReview, loading, error, t, tr, onReport, onAgenda }: { family: FamilyData; caseData: CurrentCase; isApproved: boolean; isPending: boolean; isReported: boolean; isInReview: boolean; loading: boolean; error: string; t: Translate; tr: (text: string | null | undefined) => string; onReport: () => void; onAgenda: () => void }) {
   const stage = stageIndex(caseData.case.care_stage); const firstName = family.user.full_name.split(' ')[0]; const task = caseData.tasks[0];
   return <div className="health-home">
-    <section className="family-welcome"><div><p className="family-kicker">{t('greeting')}, {firstName.toUpperCase()}</p><h1>{family.family_profile.patient_name} · {t(routeStages[stage].labelKey)}</h1><p>{caseData.case.family_message}</p></div><span className="demo-chip">{t('demoChip')}</span></section>
+    <section className="family-welcome"><div><p className="family-kicker">{t('greeting')}, {firstName.toUpperCase()}</p><h1>{family.family_profile.patient_name} · {t(routeStages[stage].labelKey)}</h1><p>{tr(caseData.case.family_message)}</p></div><span className="demo-chip">{t('demoChip')}</span></section>
     <section className="stage-summary tone-purple" aria-labelledby="stage-title"><div className="stage-summary-icon"><Heartbeat weight="fill" /></div><div><span>{t('stageOf')} {stage + 1} / 6</span><h2 id="stage-title">{t(routeStages[stage].labelKey)}</h2><p>{isPending ? 'El equipo revisa la propuesta antes de continuar.' : isReported ? 'Tu aviso llegó al equipo y se está organizando la información.' : isApproved ? 'El siguiente paso fue autorizado y está en coordinación.' : 'El equipo mantiene visible el siguiente paso de la ruta.'}</p></div><strong>{isInReview ? 'En revisión' : isApproved ? 'Autorizada' : 'En curso'}</strong></section>
     <section className="route-overview" aria-labelledby="route-title"><div className="section-heading"><div><span>{t('myRoute')}</span><h2 id="route-title">{t('routeHeading')}</h2></div><small>{stage + 1} {t('of')} 6</small></div><ol className="route-stage-list">{routeStages.map((item, index) => <li key={item.id} className={`${item.tone} ${index < stage ? 'complete' : ''} ${index === stage ? 'current' : ''}`}><i>{index < stage ? <CheckCircle weight="fill" /> : index + 1}</i><span>{t(item.shortKey)}</span><small>{index < stage ? t('stepComplete') : index === stage ? t('stepCurrent') : t('stepPending')}</small></li>)}</ol></section>
     <section className="next-appointment tone-yellow"><div className="date-block date-pending"><CalendarBlank weight="fill" /><span>POR CONFIRMAR</span></div><div><span>LO SIGUIENTE</span><h2>{task?.title || 'Próxima coordinación del equipo'}</h2><p><Clock weight="fill" /> {task?.authorized_proposal || 'El equipo confirmará fecha, hora y sede contigo.'}</p><small>{task ? 'Acción registrada; horario aún no informado' : 'Todavía no existe una cita confirmada'}</small></div><button onClick={onAgenda}>Ver detalles <ArrowRight /></button></section>
-    {task ? <section className="family-task tone-green"><CheckCircle weight="fill" /><div><span>TAREA CONFIRMADA</span><h2>{task.title}</h2><p>{task.authorized_proposal}</p></div></section> : <section className="family-task tone-yellow"><ClockCountdown weight="fill" /><div><span>ACCIÓN PENDIENTE</span><h2>{isInReview ? 'Espera la revisión del equipo' : 'Mantén tu disponibilidad actualizada'}</h2><p>{isInReview ? 'No necesitas enviar otro aviso. Te mostraremos aquí cualquier cambio.' : 'Si aparece una dificultad, avisa al equipo desde esta aplicación.'}</p></div></section>}
+    {task ? <section className="family-task tone-green"><CheckCircle weight="fill" /><div><span>TAREA CONFIRMADA</span><h2>{tr(task.title)}</h2><p>{tr(task.authorized_proposal)}</p></div></section> : <section className="family-task tone-yellow"><ClockCountdown weight="fill" /><div><span>ACCIÓN PENDIENTE</span><h2>{isInReview ? 'Espera la revisión del equipo' : 'Mantén tu disponibilidad actualizada'}</h2><p>{isInReview ? 'No necesitas enviar otro aviso. Te mostraremos aquí cualquier cambio.' : 'Si aparece una dificultad, avisa al equipo desde esta aplicación.'}</p></div></section>}
     {error && <p className="family-error" role="alert">{error}</p>}<button className="report-button" onClick={onReport} disabled={loading || isInReview}><WarningCircle weight="fill" />{isInReview ? t('reportInReview') : t('reportBarrier')}<ArrowRight weight="bold" /></button><p className="family-safety"><ShieldCheck weight="fill" /> {t('safetyNote')}</p>
   </div>;
 }
