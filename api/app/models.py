@@ -180,6 +180,29 @@ class FamilyNote(Base):
     author: Mapped[User] = sa_relationship(foreign_keys=[author_user_id])
 
 
+class TranslationCache(Base):
+    """Traducción ya resuelta de una frase, guardada para no volver a pedirla.
+
+    El modelo de traducción es lento y se paga por llamada, así que una frase se traduce una
+    sola vez en la vida del despliegue. La clave es el hash del texto y no el texto entero
+    porque hay frases largas y el índice debe seguir siendo barato.
+    """
+
+    __tablename__ = "translation_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_hash: Mapped[str] = mapped_column(String(64), index=True)
+    target_lang: Mapped[str] = mapped_column(String(8), index=True)
+    source_text: Mapped[str] = mapped_column(Text)
+    translated_text: Mapped[str] = mapped_column(Text)
+    provider: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("uq_translation_source_lang", "source_hash", "target_lang", unique=True),
+    )
+
+
 class CaseEvent(Base):
     __tablename__ = "case_events"
 

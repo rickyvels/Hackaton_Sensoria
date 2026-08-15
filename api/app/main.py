@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import get_settings
-from .routers import auth, cases, family, orchestration, professional
+from .routers import auth, cases, family, i18n, orchestration, professional
 from .startup import ensure_ready, shutdown
 
 
@@ -39,6 +39,7 @@ api_app.include_router(family.router, prefix=settings.api_prefix)
 api_app.include_router(professional.router, prefix=settings.api_prefix)
 api_app.include_router(cases.router, prefix=settings.api_prefix)
 api_app.include_router(orchestration.router, prefix=settings.api_prefix)
+api_app.include_router(i18n.router, prefix=settings.api_prefix)
 
 
 @api_app.middleware("http")

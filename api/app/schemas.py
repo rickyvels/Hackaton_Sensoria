@@ -299,6 +299,17 @@ class TaskEnvelope(BaseModel):
     task: TaskRead
 
 
+class TranslationRequest(BaseModel):
+    target: Literal["qu"]
+    texts: list[str] = Field(min_length=1, max_length=60)
+
+
+class TranslationResponse(BaseModel):
+    target: Literal["qu"]
+    # Solo incluye lo que se pudo traducir. El cliente conserva el español para el resto.
+    translations: dict[str, str]
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"]
 

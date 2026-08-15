@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     token_exp_minutes: int = 60 * 12
     database_url: str = ""
     cors_origins: str = "http://127.0.0.1:5173,http://127.0.0.1:5174,http://localhost:5173,http://localhost:5174"
+    # Traducción al quechua. Sin token el endpoint responde con el texto original, así que la
+    # aplicación sigue funcionando en español en lugar de romperse.
+    huggingface_api_token: str = ""
+    translation_model: str = "facebook/nllb-200-distilled-600M"
+    translation_timeout_seconds: float = 25.0
     agent_provider: str = "ollama"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3:8b"
