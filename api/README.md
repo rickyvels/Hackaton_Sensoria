@@ -44,6 +44,7 @@ pytest -q
 Base: `/api/v1`
 
 - `POST /auth/login`
+- `POST /auth/family-registration`
 - `GET /family/me`
 - `GET /family/cases/current`
 - `POST /family/cases/current/assistant`
@@ -65,6 +66,22 @@ Base: `/api/v1`
 - `GET /cases/{case_id}/feed`
 - `GET /tasks/{task_id}`
 - `GET /health`
+
+## Registro de la familia
+
+`POST /auth/family-registration` es **autoservicio**: la familia elige su contraseña, y la
+respuesta ya es una sesión iniciada. Crea la cuenta, su perfil y un caso propio en etapa
+`detection`, asignado al primer profesional registrado.
+
+Queda una fila en `family_registration_requests` con estado `self_service`. No habilita el acceso
+—el acceso ya está dado— sino que marca qué cuentas se crearon sin verificación del equipo de
+salud, para poder auditarlas después.
+
+Dos consecuencias que conviene tener presentes fuera de una demostración con datos sintéticos:
+
+- Un DNI repetido responde `409`, así que el endpoint revela si un DNI ya tiene cuenta. La versión
+  anterior lo ocultaba a costa de que la familia no supiera por qué no podía entrar.
+- Nadie valida que quien se registra sea el cuidador del niño que declara.
 
 ## Libreta de la familia
 

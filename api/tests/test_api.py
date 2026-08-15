@@ -24,9 +24,10 @@ async def validate_synthesis(client, token: str, case_id: int) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_family_pre_registration_accepts_dni_without_creating_a_case(client):
+async def test_family_registration_creates_an_account_that_can_sign_in(client):
     payload = {
         "dni": "44556677",
+        "password": "familia-nueva-2026",
         "companion_name": "Andrea Torres",
         "patient_name": "Valeria Torres",
         "relationship": "Madre",
@@ -35,17 +36,35 @@ async def test_family_pre_registration_accepts_dni_without_creating_a_case(clien
         "consent_confirmed": True,
     }
     response = await client.post("/api/v1/auth/family-registration", json=payload)
-    assert response.status_code == 202
-    assert response.json()["status"] == "pending_review"
+    assert response.status_code == 201
+    assert response.json()["user"]["role"] == "family"
+
+    # El registro deja la sesión iniciada: su token abre la ruta sin un segundo paso.
+    token = response.json()["access_token"]
+    current = await client.get(
+        "/api/v1/family/cases/current", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert current.status_code == 200
+    assert current.json()["case"]["patient_name"] == "Valeria Torres"
+    assert current.json()["case"]["care_stage"] == "detection"
+
+    # Y la contraseña elegida sirve para volver más adelante.
+    login = await client.post(
+        "/api/v1/auth/login", json={"dni": "44556677", "password": "familia-nueva-2026"}
+    )
+    assert login.status_code == 200
 
     repeated = await client.post("/api/v1/auth/family-registration", json=payload)
-    assert repeated.status_code == 202
+    assert repeated.status_code == 409
+
     async with SessionLocal() as session:
         requests = list((await session.execute(select(FamilyRegistrationRequest))).scalars())
         assert len(requests) == 1
         assert requests[0].dni == "44556677"
-        assert requests[0].status == "pending_review"
-        assert await session.scalar(select(func.count()).select_from(CaseRecord)) == 1
+        # Queda marcado como autoservicio para distinguirlo de un acceso verificado.
+        assert requests[0].status == "self_service"
+        # El caso sintético sembrado más el de la familia que acaba de registrarse.
+        assert await session.scalar(select(func.count()).select_from(CaseRecord)) == 2
 
 
 @pytest.mark.asyncio

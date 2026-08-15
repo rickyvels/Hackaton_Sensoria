@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
@@ -15,6 +16,7 @@ from .models import (
     CaseRecord,
     FamilyNote,
     FamilyProfile,
+    FamilyRegistrationRequest,
     OrchestrationRun,
     Task,
     User,
@@ -26,8 +28,10 @@ from .schemas import (
     FamilyNoteRead,
     FamilyNoteReviewCreate,
     FamilyNoteSummary,
+    FamilyRegistrationRequestCreate,
     SynthesisValidationCreate,
 )
+from .security import hash_password
 
 LIMA_TZ = ZoneInfo("America/Lima")
 
@@ -99,6 +103,97 @@ async def emit_event(
     session.add(event)
     await session.flush()
     return event
+
+
+async def register_family_account(
+    session: AsyncSession, *, payload: FamilyRegistrationRequestCreate
+) -> User:
+    """Create a family account with its own case and return it ready to sign in.
+
+    En el MVP el registro es autoservicio: la familia elige contraseña y entra de inmediato.
+    Queda constancia en `family_registration_requests` con estado `self_service`, para que en
+    la trazabilidad se distinga de un acceso habilitado tras verificación del equipo de salud.
+    """
+    try:
+        if await session.scalar(select(User.id).where(User.dni == payload.dni)) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ese DNI ya tiene un acceso creado. Inicia sesión con tu contraseña.",
+            )
+        professional = await session.scalar(
+            select(User).where(User.role == "professional").order_by(User.id)
+        )
+        if professional is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Todavía no hay un profesional responsable configurado.",
+            )
+
+        user = User(
+            dni=payload.dni,
+            full_name=payload.companion_name,
+            role="family",
+            password_hash=hash_password(payload.password),
+        )
+        session.add(user)
+        await session.flush()
+
+        profile = FamilyProfile(
+            user_id=user.id,
+            patient_name=payload.patient_name,
+            relationship=payload.relationship,
+            phone=payload.phone,
+            district=payload.district,
+        )
+        session.add(profile)
+        await session.flush()
+
+        case = CaseRecord(
+            case_code=f"CASO-AUTO-{uuid4().hex[:6].upper()}",
+            family_profile_id=profile.id,
+            professional_user_id=professional.id,
+            patient_name=payload.patient_name,
+            route_status="scheduled",
+            # Una familia que acaba de registrarse todavía no ha sido evaluada.
+            care_stage="detection",
+            approval_status="not_requested",
+            barrier_reported=False,
+            family_message=family_message_for_case("scheduled", "not_requested"),
+        )
+        session.add(case)
+
+        # `dni` es único en la tabla de solicitudes, así que una solicitud previa se actualiza
+        # en lugar de duplicarse.
+        existing_request = await session.scalar(
+            select(FamilyRegistrationRequest).where(FamilyRegistrationRequest.dni == payload.dni)
+        )
+        if existing_request is None:
+            existing_request = FamilyRegistrationRequest(dni=payload.dni)
+            session.add(existing_request)
+        existing_request.companion_name = payload.companion_name
+        existing_request.patient_name = payload.patient_name
+        existing_request.relationship = payload.relationship
+        existing_request.phone = payload.phone
+        existing_request.district = payload.district
+        existing_request.consent_confirmed = True
+        existing_request.status = "self_service"
+
+        await session.flush()
+        await emit_event(
+            session,
+            case_id=case.id,
+            kind="RouteState",
+            actor="Sistema",
+            message="Caso creado desde un registro autoservicio de la familia.",
+            metadata={"channel": "family-pwa", "verified_by_professional": False},
+        )
+        await session.commit()
+        await session.refresh(user)
+    except Exception:
+        await session.rollback()
+        raise
+
+    return user
 
 
 async def fetch_family_profile_for_user(session: AsyncSession, *, user_id: int) -> FamilyProfile:

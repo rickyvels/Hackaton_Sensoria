@@ -42,6 +42,7 @@ class AuthLoginResponse(BaseModel):
 
 class FamilyRegistrationRequestCreate(BaseModel):
     dni: str = Field(min_length=8, max_length=16)
+    password: str = Field(min_length=8, max_length=128)
     companion_name: str = Field(min_length=3, max_length=120)
     patient_name: str = Field(min_length=2, max_length=120)
     relationship: str = Field(min_length=2, max_length=64)
@@ -56,11 +57,6 @@ class FamilyRegistrationRequestCreate(BaseModel):
         if not normalized.isdigit():
             raise ValueError("dni must contain only digits")
         return normalized
-
-
-class FamilyRegistrationRequestResponse(BaseModel):
-    status: Literal["pending_review"]
-    message: str
 
 
 class FamilyProfileRead(BaseModel):

@@ -23,7 +23,11 @@ class User(Base):
 
 
 class FamilyRegistrationRequest(Base):
-    """Minimal pre-registration. It does not create a clinical case or grant access."""
+    """Rastro del registro de una familia, conservado aparte de su cuenta.
+
+    En el MVP el registro es autoservicio y la fila queda con estado `self_service`. Sirve para
+    poder distinguir después qué accesos se crearon sin verificación del equipo de salud.
+    """
 
     __tablename__ = "family_registration_requests"
 
