@@ -129,14 +129,19 @@ describe("FamilyAccessPage", () => {
     expect(stored.patientAgeMonths).toBe(9)
   })
 
-  it("no registra con una edad fuera del rango de la libreta", () => {
+  it("recorta al rango de la libreta una edad disparatada, sin frenar el acceso", () => {
     renderAccess()
     openRegisterTab()
     fillRegistration({ "Edad del niño o niña en meses": "400" })
     acceptConsent()
     fireEvent.click(screen.getByRole("button", { name: /Crear mi acceso y entrar/ }))
 
-    expect(screen.getByRole("alert")).toHaveTextContent("entre 0 y 216 meses")
+    expect(screen.getByText("Aplicación abierta")).toBeInTheDocument()
+
+    const stored = JSON.parse(
+      window.sessionStorage.getItem("neuroalianza.preview.family-session") ?? "{}",
+    )
+    expect(stored.patientAgeMonths).toBe(216)
   })
 
   it("guarda el texto libre cuando el seguro es «Otro»", () => {
@@ -155,7 +160,7 @@ describe("FamilyAccessPage", () => {
     expect(stored.insuranceLabel).toBe("Sin seguro")
   })
 
-  it("no registra si el seguro «Otro» queda sin detallar", () => {
+  it("entra con el seguro «Otro» sin detallar, etiquetándolo por defecto", () => {
     renderAccess()
     openRegisterTab()
     fillRegistration()
@@ -163,27 +168,49 @@ describe("FamilyAccessPage", () => {
     acceptConsent()
     fireEvent.click(screen.getByRole("button", { name: /Crear mi acceso y entrar/ }))
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Indica cuál es el seguro")
-    expect(screen.queryByText("Aplicación abierta")).not.toBeInTheDocument()
+    expect(screen.getByText("Aplicación abierta")).toBeInTheDocument()
+
+    const stored = JSON.parse(
+      window.sessionStorage.getItem("neuroalianza.preview.family-session") ?? "{}",
+    )
+    expect(stored.insuranceLabel).toBe("Otro seguro")
   })
 
-  it("no registra si las contraseñas no coinciden", () => {
+  it("entra aunque las contraseñas no coincidan", () => {
     renderAccess()
     openRegisterTab()
     fillRegistration({ "Repite tu contraseña": "otraClave99" })
     acceptConsent()
     fireEvent.click(screen.getByRole("button", { name: /Crear mi acceso y entrar/ }))
 
-    expect(screen.getByRole("alert")).toHaveTextContent("no coinciden")
+    expect(screen.getByText("Aplicación abierta")).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
-  it("no registra sin marcar el consentimiento", () => {
+  it("entra sin marcar el consentimiento", () => {
     renderAccess()
     openRegisterTab()
     fillRegistration()
     fireEvent.click(screen.getByRole("button", { name: /Crear mi acceso y entrar/ }))
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Confirma el uso de los datos")
+    expect(screen.getByText("Aplicación abierta")).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("entra con el formulario completamente vacío", () => {
+    renderAccess()
+    openRegisterTab()
+    fireEvent.click(screen.getByRole("button", { name: /Crear mi acceso y entrar/ }))
+
+    expect(screen.getByText("Aplicación abierta")).toBeInTheDocument()
+
+    // Sin datos el perfil hereda la cuenta de demostración en vez de quedar en blanco.
+    const stored = JSON.parse(
+      window.sessionStorage.getItem("neuroalianza.preview.family-session") ?? "{}",
+    )
+    expect(stored.dni).toBe(DEMO_DNI)
+    expect(stored.patientName).toBeTruthy()
+    expect(stored.patientAgeMonths).toBeGreaterThan(0)
   })
 
   it("reconoce en «Ingresar» un DNI creado durante la sesión", () => {

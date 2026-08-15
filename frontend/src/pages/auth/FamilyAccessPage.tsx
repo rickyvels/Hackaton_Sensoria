@@ -8,6 +8,7 @@ import { useOptionalCase } from "@/context/CaseContext"
 import { Input } from "@/components/ui/input"
 import {
   DEMO_DNI,
+  DEMO_SESSION,
   INSURANCE_OPTIONS,
   useAuth,
   type FamilyRegistration,
@@ -100,47 +101,24 @@ export function FamilyAccessPage() {
   const handleRegister = (event: React.FormEvent) => {
     event.preventDefault()
 
-    if (form.dni.length < 8) {
-      setError("El DNI debe tener al menos 8 dígitos.")
-      return
-    }
-    if (password.length < 8) {
-      setError("La contraseña debe tener al menos 8 caracteres.")
-      return
-    }
-    if (password !== passwordConfirm) {
-      setError("Las dos contraseñas no coinciden.")
-      return
-    }
-    if (!form.companionName.trim() || !form.patientName.trim()) {
-      setError("Necesitamos tu nombre y el del niño, niña o adolescente.")
-      return
-    }
-    const patientAgeMonths = Number(ageInput.trim())
-    if (
-      !ageInput.trim() ||
-      !Number.isInteger(patientAgeMonths) ||
-      patientAgeMonths < 0 ||
-      patientAgeMonths > 216
-    ) {
-      setError("Indica una edad entre 0 y 216 meses.")
-      return
-    }
-    if (form.insurance === "otro" && !form.insuranceOther.trim()) {
-      setError("Indica cuál es el seguro del paciente.")
-      return
-    }
-    if (!consent) {
-      setError("Confirma el uso de los datos para continuar.")
-      return
-    }
+    // Demostración abierta: el formulario no rechaza nada. Ni las contraseñas, ni el
+    // consentimiento, ni la edad frenan el paso; lo que quede en blanco o fuera de rango
+    // hereda el valor de la cuenta de demostración, para que la aplicación no se abra con
+    // un perfil vacío. Cuando exista registro real en el servidor, la validación vuelve.
+    const parsedAge = Number(ageInput.trim())
+    const patientAgeMonths =
+      ageInput.trim() && Number.isFinite(parsedAge)
+        ? // El resto de la app ordena hitos y recursos por edad, así que un número
+          // disparatado se recorta al rango de la libreta CRED en vez de propagarse.
+          Math.min(Math.max(Math.trunc(parsedAge), 0), 216)
+        : DEMO_SESSION.patientAgeMonths
 
     const registration = {
       ...form,
       patientAgeMonths,
-      dni: onlyDigits(form.dni),
-      companionName: form.companionName.trim(),
-      patientName: form.patientName.trim(),
+      dni: onlyDigits(form.dni) || DEMO_SESSION.dni,
+      companionName: form.companionName.trim() || DEMO_SESSION.companionName,
+      patientName: form.patientName.trim() || DEMO_SESSION.patientName,
       relationship: form.relationship.trim() || "Persona cuidadora",
       phone: form.phone.trim(),
       district: form.district.trim(),

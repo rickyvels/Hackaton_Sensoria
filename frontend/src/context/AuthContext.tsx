@@ -91,7 +91,7 @@ const ACCOUNTS_STORAGE_KEY = "neuroalianza.preview.family-accounts"
 /** Cuenta precargada para recorrer la demostración sin registrarse. */
 export const DEMO_DNI = "12345678"
 
-const DEMO_SESSION: FamilySession = {
+export const DEMO_SESSION: FamilySession = {
   dni: DEMO_DNI,
   companionName: "Elena Ramos",
   patientName: "Mateo Jimenez Ramos",
