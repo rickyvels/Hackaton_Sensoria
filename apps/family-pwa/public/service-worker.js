@@ -1,4 +1,4 @@
-const CACHE = 'ruta-viva-family-v3';
+const CACHE = 'sensoria-family-v4';
 const STATIC_PATH = /\.(?:css|js|png|svg|webp|ico|woff2?)$/i;
 
 // En el despliegue de un solo dominio la plataforma profesional comparte origen bajo /pro/.
@@ -22,7 +22,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(caches.keys().then((keys) => Promise.all(
-    keys.filter((key) => key.startsWith('ruta-viva-family-') && key !== CACHE).map((key) => caches.delete(key)),
+    keys.filter((key) => key.startsWith('sensoria-family-') && key !== CACHE).map((key) => caches.delete(key)),
   )));
   self.clients.claim();
 });
